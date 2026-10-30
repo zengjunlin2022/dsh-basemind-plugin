@@ -97,19 +97,22 @@ jobs:
         run: npm publish --access public
 
       - name: Verify the version is resolvable
+        # Best effort: `npm publish` already exited successfully, which is the
+        # authoritative signal. A registry that has not propagated the new
+        # version to every edge yet must not cost the GitHub Release.
+        continue-on-error: true
         run: |
-          # Ask the registry directly: npm's own cache can hold the packument
-          # that was read before the publish, which hides the new version.
           url="https://registry.npmjs.org/dsh-basemind-plugin/$VERSION"
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -fsS "$url" >/dev/null 2>&1; then
-              echo "dsh-basemind-plugin@$VERSION is resolvable from the registry"
+            status="$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+            if [ "$status" = "200" ]; then
+              echo "::notice::dsh-basemind-plugin@$VERSION is resolvable from the registry"
               exit 0
             fi
+            echo "attempt $attempt: HTTP ${status:-error}"
             sleep 6
           done
-          echo "::error::dsh-basemind-plugin@$VERSION is not resolvable from the registry"
-          exit 1
+          echo "::warning::registry does not resolve dsh-basemind-plugin@$VERSION yet; npm publish succeeded, continuing to the GitHub Release"
 
       - name: Create or update the GitHub Release
         env:
