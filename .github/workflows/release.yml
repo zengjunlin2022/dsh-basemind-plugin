@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Check npm supports trusted publishing
+        run: |
+          npm_version="$(npm --version)"
+          echo "npm $npm_version"
+          if [ "$(printf '%s\n' 11.5.1 "$npm_version" | sort -V | head -n1)" != "11.5.1" ]; then
+            echo "::error::trusted publishing requires npm >= 11.5.1 (found $npm_version)"
+            exit 1
+          fi
+
+      - name: Check the package exists on npm
+        run: |
+          if ! npm view dsh-basemind-plugin version >/dev/null 2>&1; then
+            echo "::error::dsh-basemind-plugin is not on npm yet. Publish the first version manually once, configure its trusted publisher, then bump the version and push the tag."
+            exit 1
+          fi
+
+      - name: Verify the tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          case "$version" in
+            *-*) echo "::error::pre-release versions are not published by this workflow; use a plain vX.Y.Z tag"; exit 1 ;;
+          esac
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "releasing dsh-basemind-plugin@$version from $GITHUB_REF_NAME"
+
+      - name: Run tests
+        run: node --test
+
+      - name: Syntax check
+        run: |
+          node --check index.js
+          for file in lib/*.js; do node --check "$file"; done
+
+      - name: Pack the tarball
+        run: |
+          npm pack
+          tarball="dsh-basemind-plugin-${VERSION}.tgz"
+          test -f "$tarball"
+          echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+          sha256sum "$tarball" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Check whether the version is already on npm
+        id: published
+        run: |
+          if npm view "dsh-basemind-plugin@$VERSION" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "dsh-basemind-plugin@$VERSION is already on npm; skipping publish"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.published.outputs.exists != 'true'
+        # Trusted publishing: no token. The npm CLI exchanges the GitHub OIDC
+        # token (id-token: write) for a short-lived publish token, and provenance
+        # is generated automatically for a public repository and public package.
+        run: npm publish --access public
+
+      - name: Verify the version is resolvable
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if npm view "dsh-basemind-plugin@$VERSION" version >/dev/null 2>&1; then
+              echo "dsh-basemind-plugin@$VERSION is resolvable from the registry"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::dsh-basemind-plugin@$VERSION is not resolvable from the registry"
+          exit 1
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$TARBALL" SHA256SUMS.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$TARBALL" SHA256SUMS.txt \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi

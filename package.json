@@ -1,11 +1,27 @@
 {
   "name": "dsh-basemind-plugin",
   "version": "0.1.0",
-  "private": true,
   "description": "Workspace-aware BaseMind MCP bridge for DeepSeek Harness that starts its own per-workspace basemind serve relay, so sessions get BaseMind's code-intelligence tools without configuring an MCP server.",
   "type": "module",
   "main": "index.js",
+  "author": "Ken",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zengjunlin2022/dsh-basemind-plugin.git"
+  },
+  "homepage": "https://github.com/zengjunlin2022/dsh-basemind-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/zengjunlin2022/dsh-basemind-plugin/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "basemind",
+    "mcp",
+    "code-intelligence"
+  ],
   "exports": {
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",
@@ -18,19 +34,20 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "README.zh.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
-    },
-    "compatibility": {
-      "dsh": ">=0.2.1-rc.3",
-      "node": ">=22"
     }
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.3 <0.3.0-0"
   },
   "scripts": {
     "test": "node --test"
