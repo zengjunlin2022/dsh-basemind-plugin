@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "BaseMind（工作區感知）",
+    "description": "讓每個工作階段都能直接使用 BaseMind 依工作區提供的程式碼理解能力，無需自行設定 MCP 伺服器。"
+  }
+}

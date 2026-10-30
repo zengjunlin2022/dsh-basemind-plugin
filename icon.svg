@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="bm-title bm-desc">
+  <title id="bm-title">BaseMind (workspace-aware)</title>
+  <desc id="bm-desc">An abstract letter B whose strokes form a connected four-node knowledge graph, drawn in off-white with one amber accent node on a deep indigo rounded square.</desc>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="14" fill="#1B2450"/>
+  <rect x="5.75" y="5.75" width="52.5" height="52.5" rx="11.5" fill="none" stroke="#EEF2FF" stroke-opacity="0.14" stroke-width="1.1"/>
+  <g fill="none" stroke="#EEF2FF" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 16.5 V47.5"/>
+    <path d="M22 16.5 H31 Q38 16.5 38 24 Q38 31.5 31 31.5 H22"/>
+    <path d="M22 31.5 H33 Q42 31.5 42 39.5 Q42 47.5 33 47.5 H22"/>
+  </g>
+  <g fill="#EEF2FF" stroke="#1B2450" stroke-width="2">
+    <circle cx="22" cy="16.5" r="3.2"/>
+    <circle cx="22" cy="47.5" r="3.2"/>
+    <circle cx="38" cy="24" r="3.2"/>
+  </g>
+  <circle cx="42" cy="39.5" r="3.7" fill="#FFB020" stroke="#1B2450" stroke-width="2"/>
+</svg>

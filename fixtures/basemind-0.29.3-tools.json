@@ -1,0 +1,1762 @@
+[
+  {
+    "name": "admin",
+    "title": "Admin",
+    "description": "Operate basemind itself: index health, re-indexing, cache footprint and cleanup, usage telemetry, and context-shrinking text tools. `mode` is required. `status` reports this workspace's indexed state — file count, per-language breakdown, total bytes, on-disk blob count, schema version, and whether a scan is still running; ask it first when a query comes back empty or says 'no index' / 'no indexed files'. `repo` returns repository identity: workdir, current branch, full + short HEAD sha. `rescan` re-indexes the working tree in-process so symbols, calls, and outlines you just wrote become searchable — run it after editing code; `paths` scopes it incrementally, `full: true` forces a complete re-index and overrides `paths`. It holds an exclusive lock (other queries block; <1s for ~100 files) and returns scanned / updated / removed counts. `cache_stats` reports basemind's resource footprint: on-disk bytes per component (blobs / views / lance / git-cache / telemetry / git-history), the `du`-accurate `total_bytes`, blob and orphan counts, the serving process's current + peak RSS, and `last_gc` (outcome of the last destructive sweep). `gc` reports how much of the blob store is orphaned and reclaimable — report-only over MCP, `removed` is always 0; the CLI `basemind cache gc` performs the cross-workspace sweep. `cache_clear` deletes one cache component (`component`: blobs|views|lance|git-cache|telemetry|all, or views:<name>); `blobs` needs `confirm=true`, and `views`/`all` are refused in-process because they back the live index — stop the server and run `basemind cache clear` instead. `telemetry` aggregates recorded calls into a usage summary — total calls, per-tool histogram, response bytes, heuristic `est_tokens_saved` — over `window` (`today` default, `1h`, `24h`, `all`), optionally filtered to one `tool`. `compress` shrinks content so it costs less context: with `path` it returns an indexed file's structural outline (imports + signatures, verbatim, never bodies and never paraphrased); with `text` it runs a lexical prose pass — supply exactly one of the two. `delta` emits a compact +N/-M line diff from `old` to `new` so re-reading something you already saw costs only what changed; either side over 50,000 bytes or 2,000 lines bails to a full re-read (`bailed=true`). `checkpoint` extracts decisions, errors, and changed files from session `text` into a credential-safe summary to persist or re-inject instead of the whole transcript — the changed-file list comes from this server's git working tree, not from the text. `waste` flags redundant reads, repeated queries, and oversized reads in a JSON-Lines tool-call `log`. Parameters that belong to another mode are rejected, not ignored.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "status",
+            "repo",
+            "rescan",
+            "cache_stats",
+            "gc",
+            "cache_clear",
+            "telemetry",
+            "compress",
+            "delta",
+            "checkpoint",
+            "waste"
+          ]
+        },
+        "paths": {
+          "description": "`rescan`: repo-relative paths to re-index (omit for the whole tree).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "full": {
+          "description": "`rescan`: force a complete re-index; wins over `paths`.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "window": {
+          "description": "`telemetry` only. Aggregation window: `today` (default), `1h`, `24h`, `all`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "today",
+            "1h",
+            "24h",
+            "all"
+          ]
+        },
+        "tool": {
+          "description": "`telemetry` only. Exact tool-name filter, e.g. `\"code\"` or `\"admin:rescan\"`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "component": {
+          "description": "`cache_clear` only. Component to clear: `blobs|views|lance|git-cache|telemetry|all`, or\n`views:<name>` for a single non-live view. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "confirm": {
+          "description": "`cache_clear`: required for components backing the live code map.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "text": {
+          "description": "`compress` (prose input) and `checkpoint` (session transcript). Required by `checkpoint`;\n`compress` takes exactly one of `text` or `path`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "path": {
+          "description": "`compress` only. Repo-relative path of an indexed source file to compress structurally.\nMutually exclusive with `text`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "level": {
+          "description": "`compress`: `off|light|moderate|aggressive|maximum`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "off",
+            "light",
+            "moderate",
+            "aggressive",
+            "maximum"
+          ]
+        },
+        "preserve_code": {
+          "description": "`compress` only. When true (the default), code blocks inside prose are left intact.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "target_tokens": {
+          "description": "`compress`: soft token budget hint; not a hard cap.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "old": {
+          "description": "`delta` only. Previously seen content. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "new": {
+          "description": "`delta` only. Current content to diff against `old`. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "log": {
+          "description": "`waste` only. JSON-Lines tool-call log, one `{\"tool\",\"target\",\"bytes\"}` record per line.\nRequired by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "agents",
+    "title": "Agent comms",
+    "description": "Talk to the other agents working this repository: message another agent, find out who else is here, ask a question and get a reply, and check your inbox. Use it when you start, finish, hit a decision, or are about to touch code someone else may already be changing. `mode` is required. Coordination runs over THREADS — scoped conversations, never a global chat room. `thread_start` opens one, addressed by AT LEAST TWO of `subject` (topic), `path` (a path or globset glob like `src/**`), and `members` (explicit agent ids); fewer than two is rejected, and you become the creator and a member. `thread_list` shows only the threads DISCOVERABLE to you — ones you are a member of, ones whose path glob matches this server's cwd, or (with `subject_contains`) a subject filter; there is no global listing, and archived threads are excluded unless `include_archived`. `join` a thread to route its messages into your inbox and `leave` to stop: membership is always explicit, there is NO auto-join. `post` sends a message (`thread` + `subject`, plus optional markdown `body`, `tags`, and `reply_to` to reply to a specific message) and returns its `message_id`. `history` reads one thread oldest-first and `inbox` reads what is new across every thread you joined; BOTH return FRONT-MATTER ONLY (message_ref, legacy id, from, subject, ts, age_secs, tags, seq, body_len) — the body is never included, and mode `message` fetching one compact `message_ref` (preferred) or legacy `message_id` is the only path to a body, so scan the front-matter and fetch only the bodies you need. Both default to the last 24h (`since_hours`, `0` for all history) and paginate (`limit` default 100 max 1000, `cursor` from the previous `next_cursor`). `wait` long-polls up to `timeout_secs` (default 30, max 40; call again to keep waiting) and returns the moment a peer posts, instead of you looping `inbox`; it never marks anything read. `ack` clears messages you have handled by ADVANCING your own per-thread read cursors (`message_ids`, and/or `thread` + `to_seq`) — it deletes nothing and touches no other agent's inbox. `register` publishes this agent's card (name / description / version / skills) so peers can see who you are, and `list` shows the agents the broker knows, optionally just one thread's members. `members` lists a thread's membership; `add_member` / `remove_member` / `archive` are creator-only (a human admin can archive too, and idle threads auto-archive). `status` reports active/stale lifecycle counts and the last maintenance time. `cleanup` previews retention; MCP rejects `apply=true`, while CLI `--apply` is the mutation path. Every mode takes `as_agent` to act as a named sub-identity, so one orchestrator can drive several agents with separate inboxes. Parameters that belong to another mode are rejected, not ignored. Needs --features comms.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "register",
+            "list",
+            "thread_start",
+            "thread_list",
+            "join",
+            "leave",
+            "members",
+            "add_member",
+            "remove_member",
+            "archive",
+            "post",
+            "history",
+            "message",
+            "inbox",
+            "ack",
+            "wait",
+            "cleanup",
+            "status"
+          ]
+        },
+        "thread": {
+          "description": "Thread to act on (required by join/leave/members/add_member/remove_member/archive/post/history; optional filter for list/ack/wait).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "minLength": 1,
+          "maxLength": 128,
+          "default": null
+        },
+        "member": {
+          "description": "Agent id for add_member / remove_member.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "minLength": 1,
+          "maxLength": 128,
+          "default": null
+        },
+        "members": {
+          "description": "`thread_start`: extra member agent ids (you are added automatically).",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "default": null
+        },
+        "message_id": {
+          "description": "`message`: id of the front-matter row whose body to read.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "message_ids": {
+          "description": "`ack`: message ids to acknowledge.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "to_seq": {
+          "description": "`ack`: advance `thread`'s read cursor to this seq.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        },
+        "subject": {
+          "description": "`thread_start`: topic. `post`: subject line (required).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "subject_contains": {
+          "description": "`thread_list`: case-sensitive subject substring filter.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "path": {
+          "description": "`thread_start`: path or glob (e.g. `src/**`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "body": {
+          "description": "`post`: markdown body. Omit for a subject-only post; empty or whitespace-only is refused.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "tags": {
+          "description": "`post`: free-form tags.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "reply_to": {
+          "description": "`post`: id of the message replied to.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "idempotency_key": {
+          "description": "`post`: caller-chosen key making a retried post return the original message id instead of\nstoring a duplicate. Generated when omitted.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "include_archived": {
+          "description": "`thread_list`: include archived threads.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "mark_read": {
+          "description": "`inbox`: advance read cursors past the returned messages.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "cursor": {
+          "description": "Resume token from the previous `next_cursor` (history, inbox, wait).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "limit": {
+          "description": "Page size for history / inbox (default 100, max 1000).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "since_hours": {
+          "description": "history / inbox / wait: look back N hours (default 24; 0 = all).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "timeout_secs": {
+          "description": "`wait` only. Seconds to block before returning `timed_out: true`. Default 30, max 40.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "name": {
+          "description": "`register`: agent name.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "description": {
+          "description": "`register`: one-line purpose.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "version": {
+          "description": "`register`: version string.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "skills": {
+          "description": "`register`: skill labels.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "apply": {
+          "description": "`cleanup`: must be omitted or false over MCP (preview only).",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "message_ttl_hours": {
+          "description": "`cleanup`: message retention window override.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "thread_idle_hours": {
+          "description": "`cleanup`: idle-thread archive window override.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "thread_retention_hours": {
+          "description": "`cleanup`: archived-thread purge window override.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "agent_ttl_hours": {
+          "description": "`cleanup` / `status`: stale-agent window override.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "claim_ttl_hours": {
+          "description": "`cleanup`: stale identity-claim window override.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "as_agent": {
+          "description": "Sub-identity to act as (any mode); defaults to this server's agent.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "code",
+    "title": "Code map",
+    "description": "Read this repository's code map instead of opening files: grep it, find where something is defined, see who calls this, locate a file by name, and pull one symbol's body. Everything is served from the index — paths, lines, columns and signatures — at a fraction of the tokens a Read or a shell `rg` costs. The map holds CODE only: markdown, JSON, YAML, TOML, XML, CSV and other prose/config/data files are documents, invisible to every mode here (`outline` errors \"not indexed\"); search them with `memory` mode `documents`. `mode` is required. `outline` returns one file's structure (symbols with kind + row/col + signature, plus imports) — read this INSTEAD of opening the file, then fetch only the span you need; `l2: true` adds call sites and doc comments when an L2 blob exists for the file's current content. `symbols` searches every indexed symbol NAME for `name` as a case-sensitive SUBSTRING (optional `kind` filter) — the definition finder, and the right answer to \"where is X defined\"; `total` counts matches up to a per-call cap (`limit*64`, min 2000) and sets `total_is_partial` when it stops there. `grep` is regex content search (Rust `regex` syntax) over EVERY indexed code file — use it for a pattern, a string literal or a comment, and prefer `symbols` for a plain identifier; `limit` caps hits, never files, so `total_matches` is exact, and `language` / `path_contains` narrow the sweep. A per-file trigram filter skips files that cannot match, so patterns with a literal of 3+ bytes are fast; `.*` or `(?i)k` sweep all. `files` enumerates indexed paths, documents included (`path_contains` / `language` filters). `find` is fuzzy filename search over code AND document files (fzf/fd-style subsequence, case-insensitive, ranked by score, weak matches cut) — reach for it instead of `find` / `fd` / `ls -R`. `definition` resolves the reference at `path`:`line`:`column` to the definition it BINDS to — scope-resolved, not name-matched, so it never conflates same-named symbols, and it follows cross-file imports for JS/TS; `line` is 1-based, `column` 0-based bytes; a position with no resolved binding returns no `definition` rather than an error. `references` finds every call site whose callee identifier contains `name` — NAME-ONLY, no scope resolution, so `Foo::bar()` and `bar()` both match `name=\"bar\"`; that is the fast, complete floor for \"what calls this\" (only with no daemon reachable can a last-resort in-RAM fallback truncate, flagged by a `projections_capped` notice). `callers` answers the same question for ONE specific definition: it resolves `path` + `name` (+ optional `kind`) first, echoes it as `definition`, then runs that same name scan — so `total` agrees with `references` on an unambiguous name — and additionally marks each hit `resolved` when scope/import resolution PROVED it binds to that definition (`resolved_total`). `resolved: false` is not evidence a hit isn't a caller; trust `total` for completeness before a refactor and filter on `resolved` when you want precision. `implementations` finds the types that implement / extend / inherit `trait_name` (case-sensitive substring; Rust, Python, TS/TSX, JS class + interface extends/implements — Go structural satisfaction is not detected). `dependents` is the reverse import lookup: indexed files whose imports mention `module` (heuristic substring against each recorded module path; all matches, no `limit` or `cursor`). `expand` returns one symbol's RAW SOURCE BODY resolved by `path` + `name` (+ `kind` to disambiguate an overload) — the inverse of an outline entry, and the second half of the outline-then-expand pattern. `semantic` searches code by MEANING rather than spelling: `lane` picks `hybrid` (default; RRF fusion of vector, BM25 and exact-symbol lanes, degrading gracefully when a lane is unavailable), `semantic` (vector only) or `keyword` (BM25 only); it returns POINTERS (path + line/byte range + symbol), never bodies — fetch one with `chunk`. `chunk` returns a single chunk's source by `path`, disambiguated with `chunk_id` or `byte_start`. Caps: `symbols` / `grep` / `references` / `callers` / `implementations` default `limit` 100, max 1000; `files` / `find` default 200, max 5000; `semantic` default 10, max 100. The index scanners bound their work at `scan_cap = limit * 8` (min 2000) and flag a cut result with `total_is_partial`. `cursor` pages (`references` / `callers` / `implementations` cursors are stable across rescans; `symbols` / `grep` / `files` / `find` cursors are not and set `cursor_invalidated` after one), `max_tokens` budgets the returned list and sets `budgeted`, and `format: \"toon\"` returns compact tabular rows. Parameters that belong to another mode are rejected, not ignored.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which lookup to run.",
+          "type": "string",
+          "enum": [
+            "outline",
+            "symbols",
+            "grep",
+            "files",
+            "find",
+            "definition",
+            "references",
+            "callers",
+            "implementations",
+            "dependents",
+            "expand",
+            "semantic",
+            "chunk"
+          ]
+        },
+        "path": {
+          "description": "Repo-relative path of the file to act on. Required by `outline`, `definition`, `callers`,\n`expand` and `chunk`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "name": {
+          "description": "Symbol name. `symbols` matches it as a case-sensitive SUBSTRING of every indexed symbol\nname; `references` matches it against captured callee identifiers (also a substring, and\nname-only — `Foo::bar()` and `bar()` both match `\"bar\"`); `callers` and `expand` match it\nexactly against the definitions in `path`. Required by those four modes.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "query": {
+          "description": "Free-text query. `find` matches it as a fuzzy subsequence against every indexed code path;\n`semantic` embeds / tokenizes it for retrieval. Required by both.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "pattern": {
+          "description": "`grep` only. Rust regex syntax (`regex` crate). Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "trait_name": {
+          "description": "`implementations` only. Trait / interface / base-class name, matched as a case-sensitive\nsubstring. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "module": {
+          "description": "`dependents` only. Module / import target (e.g. `\"tokio::sync\"`, `\"react\"`), matched as a\nsubstring against each recorded import path. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "kind": {
+          "description": "`symbols` / `callers` / `expand`. Symbol-kind filter: function, method, struct, enum, class,\ninterface, trait, type, const, module, macro.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "language": {
+          "description": "`grep` / `files` / `find` / `implementations`. Language filter (e.g. `\"rust\"`,\n`\"typescript\"`), applied before matching.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "path_contains": {
+          "description": "`grep` / `files`. Substring filter on the repo-relative path.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "path_prefix": {
+          "description": "`find` only. Path prefix applied before fuzzy scoring (e.g. `\"src/mcp/\"`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "line": {
+          "description": "`definition` only. 1-based line of the reference identifier. Required by that mode.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "column": {
+          "description": "`definition` only. 0-based byte column of the reference within the line. Default 0.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "l2": {
+          "description": "`outline` only. Also return calls + doc comments (L2). Default false; falls back to empty\nlists when no L2 blob exists for the file's current content.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "include_context": {
+          "description": "`grep` only. Include one line of context before and after each hit. Default true.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "limit": {
+          "description": "Result cap: `files`/`find` default 200 (max 5000), `semantic` 10 (max 100), others 100 (max 1000).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "max_tokens": {
+          "description": "Token budget bounding the returned list; overflow is dropped and flagged `budgeted: true`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "format": {
+          "description": "`\"json\"` (default) or `\"toon\"` (compact tabular).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "json",
+            "toon"
+          ]
+        },
+        "cursor": {
+          "description": "Resume token from the previous `next_cursor`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "lane": {
+          "description": "`semantic`: `hybrid` (default), `semantic` (vector only) or `keyword` (BM25 only).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "hybrid",
+            "semantic",
+            "keyword"
+          ]
+        },
+        "rerank": {
+          "description": "`semantic`: cross-encoder rerank of fused hits (default from config; first use downloads a model).",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "rerank_preset": {
+          "description": "`semantic` only. Reranker preset name (default `bge-reranker-base`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "rerank_top_k": {
+          "description": "`semantic` only. How many top fused hits to rerank.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
+        },
+        "chunk_id": {
+          "description": "`chunk` only. The content-addressed chunk id from a `semantic` hit.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "byte_start": {
+          "description": "`chunk` only. The chunk's start byte offset from a `semantic` hit — an alternative to\n`chunk_id`. Both may be omitted when the file holds a single chunk.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "git",
+    "title": "Git history",
+    "description": "Read this repository's git history without shelling out to `git log`, `git blame`, `git diff` or `git status`. `mode` is required. `status` is `git status` for an agent: staged adds/modifies/deletes, working-tree modifications, untracked files, and `is_clean` when all five buckets are empty — ask it before assuming the tree is dirty or clean. `recent` is 'what changed recently': the last N commits on the current branch, newest first, each with sha, summary, author, unix time and (unless `include_files=false`) the per-file change list. It is a bounded RECENCY WINDOW, not a search — `limit` is page size (default 20, max 100), so it sees at most the newest ~100 commits. `search` is the one for 'what did <author> do', 'which commit mentions X', or '<author>'s last commit': tokenized AND full-text over the ENTIRE branch history — author name + email, commit summary, and full body — so it finds matches arbitrarily far back, newest first. `field` scopes it to `author`, `message`, or `all` (default; `summary`/`body` alias `message`); served from the git-history index when fresh, otherwise a bounded live fallback flagged `partial` (author + summary only); each hit's body is cut at `body_chars` (default 1000, 0 omits it) and flagged `body_truncated`. `show` takes a `sha` (or any revision) and returns that one commit with its FULL message and changed files — use it to read a body `search` cut. `touching` answers 'when was this file changed' — the commits that modified one `path`, newest first. `by_path` is a cheap pickaxe: commits in a recent `window` (default 200, max 1000) whose changed-file list has a path matching the regex `pattern`; it matches PATHS ONLY, never patch text. `churn` answers 'what changes most often' / 'where is the hot code': the `top_k` (default 20, max 200) most-frequently modified files in the last `window` commits (default 200, max 2000), with an added/modified/deleted breakdown. `diff` is `git diff <rev_old> <rev_new> -- <path>`: hunks with 1-based old/new line ranges and '-'/'+' prefixed text, plus `present_at_old`/`present_at_new` when the file exists on only one side. `diff_outline` is the structural version — which SYMBOLS the current view added, removed, or kept versus `rev` (default HEAD) — use it to see what a branch introduced without reading the source. `blame` answers 'who last touched this line' / 'who wrote this': one hunk per consecutive run of lines sharing a source commit, at `rev` (default HEAD), optionally clamped to `line_start`..`line_end` (1-based, inclusive, supplied together). `blame_symbol` does the same for one named symbol — it resolves the symbol through the indexed outline (so the file must be in the current view), then blames exactly its line span; `kind` disambiguates same-named symbols. `symbol_history` answers 'when did this function actually change': the commits where the symbol's BODY fingerprint changed, or where it was introduced or removed — file-level history filtered down to symbol identity via tree-sitter; `hash_mode` picks `normalized` (default), `structural`, or `structural_loose`. Paths are repository-relative and forward-slash. The commit-list modes (`recent`, `touching`, `by_path`, `search`) hold their output to `max_tokens` (default 20000): overflow is dropped, `budgeted` is set and `next_cursor` resumes at the first dropped commit. Every paged mode returns `next_cursor`; cursors are scoped to HEAD and a moved HEAD comes back as `cursor_invalidated`. A shallow clone sets `truncated` / `truncated_reason`, so a missing commit is inconclusive rather than absent. Requires a git repository. Parameters that belong to another mode are rejected, not ignored.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "status",
+            "recent",
+            "touching",
+            "by_path",
+            "churn",
+            "diff",
+            "diff_outline",
+            "blame",
+            "blame_symbol",
+            "symbol_history",
+            "search",
+            "show"
+          ]
+        },
+        "path": {
+          "description": "Repo-relative path; required by touching/diff/diff_outline/blame/blame_symbol/symbol_history.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "pattern": {
+          "description": "`by_path` — a regular expression matched against each commit's changed **file paths**; and\n`search` — a full-text query over commit author + message, tokenized (lowercased, split on\nnon-alphanumeric) and matched as an AND. Required by both modes.\n`by_path`: regex over changed file paths. `search`: AND-matched full-text query over author + message. Required by both.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "field": {
+          "description": "`search`: `author`, `message` or `all` (default).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "author",
+            "message",
+            "all"
+          ]
+        },
+        "name": {
+          "description": "`blame_symbol`/`symbol_history`: symbol name in `path` (required).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "kind": {
+          "description": "`blame_symbol`/`symbol_history`: symbol kind to disambiguate (`function`, `struct`, ...).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "limit": {
+          "description": "Page size; default and cap vary per mode (see tool description).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "cursor": {
+          "description": "Resume token from the previous `next_cursor`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "max_tokens": {
+          "description": "`recent`/`touching`/`by_path`/`search`: token budget for the returned commit list (default\n20000). Commits past the budget are dropped, `budgeted: true` is set and `next_cursor`\nresumes at the first dropped commit. At least one commit is always returned.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "body_chars": {
+          "description": "`search` only: cap each hit's commit body at this many characters (default 1000, 0 omits\nthe body). A cut body ends in a marker and sets `body_truncated`; `show` returns it whole.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "sha": {
+          "description": "`show` only: commit to show, a full or abbreviated sha or any revision (required).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "include_files": {
+          "description": "`recent` only. Include each commit's per-file change list. Default true.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "top_k": {
+          "description": "`churn` only. How many files to keep in the churn ranking. Default 20, max 200.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "window": {
+          "description": "`by_path`/`churn`: commits back from HEAD to inspect (default 200).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "rev": {
+          "description": "`diff_outline`, `blame`, `blame_symbol`. Revision to read at. Defaults to HEAD.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "rev_old": {
+          "description": "`diff` only. Left-hand revision. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "rev_new": {
+          "description": "`diff` only. Right-hand revision. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "line_start": {
+          "description": "`blame`: 1-based first line; pair with `line_end`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "line_end": {
+          "description": "`blame`: 1-based last line, inclusive; pair with `line_start`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "hash_mode": {
+          "description": "`symbol_history` only. Fingerprint strategy for detecting body changes between commits:\n`normalized` (default), `structural`, or `structural_loose`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "normalized",
+            "structural",
+            "structural_loose"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "graph",
+    "title": "Code graph",
+    "description": "Navigate the unified code-graph: who calls this, what does this reach, how do these two connect, what are this repo's modules and hubs, and render or show the graph. `mode` is required. `calls` BFS-walks the call chain from one function — `direction=\"callers\"` (default) for who calls `name`, `\"callees\"` for what `name` calls; `name` is exact (not a substring), `path` disambiguates overloads, bounded by `max_depth` (default 3, max 6) and `max_nodes` (default 100, max 500); only resolved in-repo calls are edges, cycles are detected, and recursion surfaces as a self-edge. `neighbors` returns the n-hop neighborhood around a symbol — `direction` \"both\" (default) / \"out\" (what it reaches) / \"in\" (what reaches it), `depth` (default 2, max 4), `max_nodes` (default 100, max 500) — use it to see a symbol's blast radius before changing it. `path` finds the confidence-weighted shortest route between two symbols (`from` → `to`) across mixed lanes, preferring proven edges over inferred ones; containment is excluded unless `include_contains`; `found`, ordered `nodes`/`edges`, and total `cost` come back. `subgraph` gathers the neighborhood and cuts it to the `max_nodes` (default 30, max 200) most central nodes so you get a readable picture, not a dump — roots always kept. `communities` clusters the whole graph into de-facto modules with deterministic LLM-free labels (`algorithm` label_propagation default / louvain), largest first. `map` is the whole-repo architecture overview ranked by PageRank centrality + git churn — `granularity` \"module\" (default) / \"file\" / \"symbol\" — reporting hub modules, fan-in / fan-out, and circular-dependency clusters (SCCs); ask it first when you need to learn an unfamiliar codebase's shape without reading files. `export` renders the graph as `format` node_link (default JSON) / dot / mermaid / graphml / cypher / html / svg, returned inline with `max_edges` default 200 / max 2000 (`write: true` also persists it and returns `output_path`). Edge caps keep the highest-weight edges and responses report both rendered `edge_count` and pre-cap `edge_count_total`. `display` renders a visual html/svg view and opens it in the human's desktop viewer — the agent's human-facing output channel; `open` returns a live browsable `url` for the interactive UI (a daemon-served http page when one is reachable, else a `file://` export). Both visual modes accept `max_edges` default/max 2000 and persist a stable `output_path` and both take `open: false` to skip launching anything, which is what headless automation, tests, and browser-driving agents should pass. Across the graph modes `edges` picks the lanes (all/calls/imports/inherits/both/contains; `map` defaults to calls, the rest to all), `min_confidence` floors edge confidence, and `focus` scopes to a repo-relative path prefix. Every edge carries kind + provenance (extracted/inferred/ambiguous) + numeric confidence; results are deterministic, LLM-free, and bounded — `truncated` flags a capped or scan-truncated result, and an unresolved name returns an empty result rather than an error. Parameters that belong to another mode are rejected, not ignored.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "calls",
+            "neighbors",
+            "path",
+            "subgraph",
+            "communities",
+            "map",
+            "export",
+            "display",
+            "open"
+          ]
+        },
+        "name": {
+          "description": "`calls` / `neighbors` / `subgraph`. Root symbol name, matched exactly (not a substring).\nEvery definition site of the name is a root; pin one with `path`. Required by those modes.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "path": {
+          "description": "`calls` / `neighbors` / `subgraph`. Repo-relative path that disambiguates `name` when\nseveral definitions share it.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "from": {
+          "description": "`path` only. Source symbol name. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "from_path": {
+          "description": "`path` only. Repo-relative path that disambiguates the source symbol.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "to": {
+          "description": "`path` only. Target symbol name. Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "to_path": {
+          "description": "`path` only. Repo-relative path that disambiguates the target symbol.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "direction": {
+          "description": "`calls`: `\"callers\"` (default; who calls into `name`) or `\"callees\"` (what `name` calls).\n`neighbors`: `\"both\"` (default), `\"out\"`, or `\"in\"` — the `callees`/`callers` synonyms are\naccepted there too.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "depth": {
+          "description": "`neighbors` / `subgraph`: hop radius, default 2, capped at 4. `map`: directory-rollup depth\nfor `granularity=\"module\"` (leading path components), default 2, minimum 1.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "max_depth": {
+          "description": "`calls` only. BFS depth from the root. Default 3, capped at 6.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "max_nodes": {
+          "description": "Node cap, per mode: `calls` default 100 / max 500; `neighbors` default 100 / max 500;\n`subgraph` keeps the default 30 / max 200 most central nodes; `map` default 60 / max 300;\n`export` / `display` / `open` default 500 / max 2000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "max_edges": {
+          "description": "Hard cap on edges for `map` / `export` / `display` / `open`. Default 200 for `map` and\n`export`, 2000 for the visual modes; max 2000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "max_tokens": {
+          "description": "`map` only. Token budget for the `nodes` list; sets `budgeted` when it trims the tail.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "edges": {
+          "description": "Edge lanes to follow: `\"all\"` (calls+imports+inherits), `\"calls\"`, `\"imports\"`,\n`\"inherits\"`, `\"both\"` (calls+imports), or `\"contains\"`. Default `\"all\"` everywhere except\n`map`, whose historical default is `\"calls\"`. Not accepted by `calls`, which is a\ncall-lane-only walk.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "all",
+            "calls",
+            "imports",
+            "inherits",
+            "both",
+            "contains"
+          ]
+        },
+        "include_contains": {
+          "description": "`path` only. Include containment (file→symbol) edges in the search. Default false — they\nyield structurally valid but meaningless routes.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "min_confidence": {
+          "description": "`neighbors` / `path` / `subgraph` / `communities` / `export` / `display` / `open`. Minimum\nedge confidence to traverse (0.0–1.0, clamped). Default 0.0 — keep everything.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        },
+        "algorithm": {
+          "description": "`communities` / `export` / `display` / `open`. Community-detection algorithm:\n`\"label_propagation\"` (default, near-linear) or `\"louvain\"` (higher-quality modularity).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "label_propagation",
+            "louvain"
+          ]
+        },
+        "max_communities": {
+          "description": "`communities` only. Cap on communities returned, largest first. Default 50, max 200.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "members_per_community": {
+          "description": "`communities` only. Cap on members listed per community, most central first. Default 10,\nmax 100.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "granularity": {
+          "description": "`map` only. `\"module\"` (default; directory-level dependency graph), `\"file\"`, or `\"symbol\"`\n(hub functions ranked by specificity-weighted fan-in).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "module",
+            "file",
+            "symbol"
+          ]
+        },
+        "focus": {
+          "description": "`map` / `export` / `display` / `open`. Repo-relative path prefix scoping the graph (e.g.\n`\"src/mcp\"`). Omit for the whole repository.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "include_churn": {
+          "description": "`map` only. Overlay git churn (commits touching each node) onto the ranking and as a\nper-node field. Default true; a silent no-op outside a git repo.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "churn_window": {
+          "description": "`map` only. Commit window for the churn overlay. Default 200, max 2000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "format": {
+          "description": "`export`: `\"node_link\"` (default), `\"dot\"`, `\"mermaid\"`, `\"graphml\"`, `\"cypher\"`, `\"html\"`,\nor `\"svg\"`. `display` / `open`: the visual formats only — `\"html\"` (default) or `\"svg\"`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "node_link",
+            "dot",
+            "mermaid",
+            "graphml",
+            "cypher",
+            "html",
+            "svg"
+          ]
+        },
+        "write": {
+          "description": "`export`: also write to the cache and return `output_path` (default false).",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "open": {
+          "description": "`display`/`open`: launch the viewer (default true); false only renders and returns the path or URL.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "memory",
+    "title": "Memory and documents",
+    "description": "Durable repo-scoped memory plus retrieval over indexed documents: remember this, recall what we know, search the PDFs, and review mined suggestions. `mode` is required. `put` writes (upserts) a note under a key so later sessions and other agents read it back — `embed=false` skips vector indexing; `get` is an exact-key lookup, no vector touch; `list` enumerates entries with a key-PREFIX filter (`prefix`, not substring) and an exact `tag` filter, `cursor`-paged (default 100, max 1000); `search` is vector KNN over stored notes — \"what do we already know about X\" (default 10, max 100, ranked by L2 distance, `tag` filtered after the KNN); `delete` removes one key from both the index and the vector store. `audit` re-verifies stored notes against the LIVE code index — file and symbol provenance, structural-hash drift — decaying importance and archiving records stale for over 90 days; `dry_run` previews the verdicts (default 100, max 1000). `documents` is semantic search over indexed documents — PDFs, Office files, HTML, email, OCR'd images, and also markdown, config and data files (JSON/YAML/TOML/XML/CSV), which the code map does not hold — read the matching chunks instead of opening the file; `mime_type` filters exactly, `entity_category` / `keywords_contains` filter by NER category / keyword, and `scope` picks the ingestion scope (pages ingested by the `web` tool live under `web:<host>`), `max_tokens` budgets the hits and `format:\"toon\"` compacts them. `mine` derives co-change proposals from git history (a candidate needs `min_support` co-changes and `min_confidence` = support / anchor commits; bulk commits over `max_files_per_commit` are skipped); `proposals` lists what is awaiting review; `accept` promotes one into searchable memory tagged skill/cochange; `reject` tombstones it so mining never resurfaces it. `visibility` selects the tier for the memory modes: `group` (shared across agents, the default) or `individual` (private to the calling agent). Parameters that belong to another mode are rejected, not ignored. Every mode except `documents` needs --features memory; `documents` needs --features documents.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "put",
+            "get",
+            "list",
+            "search",
+            "delete",
+            "audit",
+            "documents",
+            "mine",
+            "proposals",
+            "accept",
+            "reject"
+          ]
+        },
+        "key": {
+          "description": "Memory key. Required by `put` / `get` / `delete`. Optional for `audit` (audit this one\nrecord instead of the whole scope) and for `accept` (override the auto-derived\n`skill/cochange-<short_id>` key).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "value": {
+          "description": "`put` only, required: the note body to store.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "tags": {
+          "description": "`put`: tags for exact filtering by `list`/`search`.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "embed": {
+          "description": "`put`: also embed for `search` (default true).",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "visibility": {
+          "description": "`group` (shared, default) or `individual` (this agent only).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "group",
+            "individual",
+            null
+          ],
+          "default": null
+        },
+        "prefix": {
+          "description": "`list`: key-prefix filter.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "tag": {
+          "description": "`list`/`search`: exact tag filter.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "limit": {
+          "description": "Result cap: `search`/`documents` default 10 (max 100); `list`/`audit`/`proposals` default 100 (max 1000).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "cursor": {
+          "description": "`list`/`proposals`: resume token from `next_cursor`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "query": {
+          "description": "Search text. Required by `search` (vector KNN over stored memory) and by `documents`\n(semantic search over indexed document chunks).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "dry_run": {
+          "description": "`audit`: return verdicts without persisting.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "include_archived": {
+          "description": "`audit`: also scan archived records.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "max_tokens": {
+          "description": "`documents`: token budget for `hits`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "format": {
+          "description": "`documents`: `\"json\"` (default) or `\"toon\"`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "json",
+            "toon"
+          ]
+        },
+        "mime_type": {
+          "description": "`documents`: exact MIME-type filter.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "scope": {
+          "description": "`documents`: ingestion scope (default this repo; web pages live under `web:<host>`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "entity_category": {
+          "description": "`documents`: case-insensitive substring over NER entity categories (ANDed with `keywords_contains`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "keywords_contains": {
+          "description": "`documents`: case-insensitive substring over document keywords.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "window": {
+          "description": "`mine` only: number of recent commits to inspect (default 200, max 2000).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "min_support": {
+          "description": "`mine` only: minimum co-change count for a candidate to be emitted (default 5).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "min_confidence": {
+          "description": "`mine`: minimum support / anchor_freq (default 0.6).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        },
+        "max_files_per_commit": {
+          "description": "`mine`: skip commits touching more files (default 25).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "kind": {
+          "description": "`proposals` only: filter by proposal kind — `\"skill\"` or `\"memory\"`. Omit for all.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "enum": [
+            "skill",
+            "memory"
+          ]
+        },
+        "id": {
+          "description": "Proposal id as returned by `proposals`. Required by `accept` and `reject`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "reason": {
+          "description": "`reject` only: human-readable reason. Logged, never persisted.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "shell",
+    "title": "Shell sessions",
+    "description": "Run a long-lived background terminal session — a build, a dev server, a test watcher, a REPL — and read its output later, instead of blocking on a one-shot command. Backed by the embedded rmux daemon; sessions are headless by default, while `[shells].visual` can opt into a terminal attachment. `mode` is required. `spawn` starts one: `command` runs through the login shell (e.g. `bash -lc '<command>'`), with optional `cwd` (repo-relative; workspace root by default), `env` (key/value list), and `title`; it returns a stable `session_id` — the handle every other mode addresses — plus an `attach_command` (`rmux attach -t <name>`) an operator can run to watch it. Completed sessions and their pane output remain retained until an explicit `kill` or the shared daemon's idle TTL expires with no live panes, so a short-lived command can still be inspected after it exits. `send` types `text` into a session's stdin, appending a newline so the line executes unless `enter=false` sends a raw keystroke fragment. `capture` reads back the most recent non-blank rows from retained pane history, including output from a command that already exited; `lines` caps the rows at 500 and defaults to 50, so poll it rather than expecting every byte ever written. `kill` terminates a live session or removes a retained completed session, returning `killed=true` when removal succeeds. An already-unknown `session_id` is rejected. `list` needs no arguments and returns every session the daemon currently hosts — the way to recover a `session_id` in a process that did not spawn it, since sessions live in the shared daemon, not in this server. `broadcast` types the same `text` into several `session_ids` at once and returns `delivered`; every id must be live, and an unknown one fails the whole broadcast before any pane is written. Parameters that belong to another mode are rejected, not ignored. Needs --features shells.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "spawn",
+            "send",
+            "capture",
+            "kill",
+            "list",
+            "broadcast"
+          ]
+        },
+        "command": {
+          "description": "`spawn` only. Command line to run in the session's initial pane, interpreted by the login\nshell (e.g. `bash -lc '<command>'`). Required by that mode.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "cwd": {
+          "description": "`spawn` only. Repository-relative working directory for the spawned process.\nForward-slash separated, no leading `/`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "env": {
+          "description": "`spawn`: environment-variable overrides.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "description": "One environment-variable override for a spawned shell, in `KEY` / `VALUE` form.\n\nModelled as a struct (rather than a raw `\"K=V\"` string) so the schema is\nself-documenting and the values are not re-parsed.",
+            "type": "object",
+            "properties": {
+              "key": {
+                "description": "Environment variable name.",
+                "type": "string"
+              },
+              "value": {
+                "description": "Environment variable value.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "value"
+            ]
+          },
+          "default": null
+        },
+        "title": {
+          "description": "`spawn` only. Human-readable title for the session (advisory; address the session by the\nreturned `session_id`).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "session_id": {
+          "description": "`send` / `capture` / `kill`. The `session_id` returned by `spawn`. Required by those modes.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "session_ids": {
+          "description": "`broadcast` only. The `session_id`s to deliver `text` to. Required by that mode.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "text": {
+          "description": "`send` / `broadcast`. Text to write to the session's stdin. Required by those modes.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "enter": {
+          "description": "`send`/`broadcast`: append a newline (default true); false sends raw keystrokes.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "lines": {
+          "description": "`capture` only. Cap on trailing non-blank rows of recent retained pane output. Maximum 500;\nomit to return up to 50 rows.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "maximum": 500,
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "web",
+    "title": "Web",
+    "description": "Pull the web into basemind: fetch a page, crawl a docs site, or list a site's URLs. `mode` is required. `scrape` fetches one http/https URL, extracts markdown, and chunks + embeds it into the documents vector store (scope `web:<host>`) so it is retrievable later via `memory` mode `documents` — use it to pull a known spec, RFC, API doc, changelog, or blog post into RAG instead of pasting the page into context; `index=false` fetches metadata only and skips the embedding cost. `crawl` follows links breadth-first from a seed URL and indexes every page under one shared scope — use it for a section of a documentation site, not a single page; bounded by `[crawl].max_pages` / `max_depth` in basemind.toml, with per-call overrides advisory. `map` discovers a site's URLs from its sitemap and link map WITHOUT fetching bodies, returning lastmod / changefreq / priority hints — use it to scope a follow-up `crawl` or to pick targeted `scrape` calls; capped by `limit` (default 100, max 1000), with `total_urls` and `truncated` telling you whether you are holding a page or the whole site. robots.txt is respected by default. Parameters that belong to another mode are rejected, not ignored. Needs --features crawl.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode",
+        "url"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "scrape",
+            "crawl",
+            "map"
+          ]
+        },
+        "url": {
+          "description": "Absolute http or https URL: the page to fetch (`scrape`), the crawl seed (`crawl`), or the\nsite to enumerate (`map`).",
+          "type": "string",
+          "format": "uri"
+        },
+        "index": {
+          "description": "`scrape`: chunk, embed and store for `memory` mode `documents` (default true); false = metadata only.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "scope": {
+          "description": "`scrape` and `crawl` only. LanceDB `scope` tag; defaults to `\"web:<host>\"`. Override to\nshare a scope across many hosts or to namespace per project.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "max_pages": {
+          "description": "`crawl` only. Overrides the global `[crawl].max_pages` cap for this call.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "max_depth": {
+          "description": "`crawl` only. Overrides the global `[crawl].max_depth` cap for this call.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "limit": {
+          "description": "`map` only. Cap the number of URLs returned. Default 100, max 1000 — the crawlberg fetch cap\nthat bounds peak memory. `total_urls` + `truncated` report whether more exist.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "workspace",
+    "title": "Workspace registry",
+    "description": "Find out which repos, worktrees and branches this machine has, and who is already working them, before you edit a shared checkout. `mode` is required. `workspaces` lists every workspace the daemon has seen — git checkouts and plain directories — with its stable key, kind, root, owning repo id and last-seen time; start here to learn the `repo_id` the other modes take. `worktrees` lists the git worktrees of one repo by `repo_id` (a normalized remote URL, else `path:<root>`), each with its name (`(main)` or the linked directory name), checkout path, head sha, branch, and the agent currently claiming it — use it to check whether another session already owns the tree you were about to edit. `branches` lists that repo's local branches with their 40-hex head shas. `claim` takes an ADVISORY claim on a worktree (`repo_id` + `name`) to tell peers you are working it, and `release` gives up a claim you hold. A claim is a COORDINATION HINT recorded in the registry: it enforces nothing, locks nothing, and blocks no file access — `held: true` means the claim is yours (claim) or yours was cleared (release), `false` means another agent holds it or the worktree is unknown. Reads the comms daemon's machine registry, populated as serve sessions connect; an unknown repo id returns an empty list. `repo_id` is required by every mode but `workspaces`, `name` additionally by `claim` and `release`; parameters that belong to another mode are rejected, not ignored. Needs --features comms.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "workspaces",
+            "worktrees",
+            "branches",
+            "claim",
+            "release"
+          ]
+        },
+        "repo_id": {
+          "description": "Required by `worktrees`, `branches`, `claim`, `release`. Normalized remote URL or `path:<root>`; see `workspaces`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "name": {
+          "description": "Required by `claim` and `release`: `(main)` or the linked-worktree directory name.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "as_agent": {
+          "description": "Sub-identity to act as; defaults to this server's agent.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  }
+]
