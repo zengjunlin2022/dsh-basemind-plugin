@@ -33,7 +33,7 @@ npm view dsh-basemind-plugin version
 | Component | Requirement |
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`, declared in `engines.dsh` and enforced by DSH at install and startup. This version is verified on `0.2.1-rc.5`. |
-| Node.js | `>= 22` (declared in `engines`). The plugin is plain ESM with no dependencies. |
+| Node.js | `>= 24.20.0` (declared in `engines` and pinned with Volta). The plugin is plain ESM with no dependencies. |
 | BaseMind | Any version. The plugin does not pin or gate BaseMind: the tools it exposes are exactly what the running `basemind serve` advertises through `tools/list`. |
 
 ## 4. Install

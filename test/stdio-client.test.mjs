@@ -28,6 +28,29 @@ async function waitFor(predicate, { timeout = 2000, label = 'condition' } = {}) 
   }
 }
 
+/**
+ * Await work whose only scheduled callback is an unref'd timer.
+ *
+ * The client deliberately unrefs its request-timeout timer so a pending call
+ * never keeps the host process alive. With no other handle open, Node's test
+ * runner sees an empty event loop while the test's promise is still pending and
+ * fails it ("Promise resolution is still pending but the event loop has already
+ * resolved"). Holding a ref'd timer for the duration keeps the loop alive
+ * without changing what the test asserts.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} [ms]
+ * @returns {Promise<T>}
+ */
+async function awaitingUnrefTimer(promise, ms = 200) {
+  const keepAlive = setTimeout(() => {}, ms);
+  try {
+    return await promise;
+  } finally {
+    clearTimeout(keepAlive);
+  }
+}
+
 /** Collect logger warnings. */
 function createLogger() {
   /** @type {string[]} */
@@ -347,7 +370,7 @@ test('a timed-out request rejects and sends notifications/cancelled', async () =
   const server = harness.latest();
 
   const pending = client.request('tools/call', { name: 'slow' }, { timeoutMs: 25 });
-  await assert.rejects(pending, /basemind request 'tools\/call' timed out after 25 ms/);
+  await awaitingUnrefTimer(assert.rejects(pending, /basemind request 'tools\/call' timed out after 25 ms/));
 
   await waitFor(() => server.lastByMethod('notifications/cancelled') !== undefined, { label: 'cancelled notification' });
   const cancelled = server.lastByMethod('notifications/cancelled');

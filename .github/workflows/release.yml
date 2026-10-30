@@ -30,7 +30,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.20.0
           registry-url: https://registry.npmjs.org
 
       - name: Check npm supports trusted publishing
@@ -82,7 +82,9 @@ jobs:
       - name: Check whether the version is already on npm
         id: published
         run: |
-          if npm view "dsh-basemind-plugin@$VERSION" version >/dev/null 2>&1; then
+          # --prefer-online: a packument cached before this run must not make an
+          # unpublished version look published, nor a published one look absent.
+          if npm view "dsh-basemind-plugin@$VERSION" version --prefer-online >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "dsh-basemind-plugin@$VERSION is already on npm; skipping publish"
           else
@@ -98,8 +100,11 @@ jobs:
 
       - name: Verify the version is resolvable
         run: |
-          for attempt in 1 2 3 4 5; do
-            if npm view "dsh-basemind-plugin@$VERSION" version >/dev/null 2>&1; then
+          # Ask the registry directly: npm's own cache can hold the packument
+          # that was read before the publish, which hides the new version.
+          url="https://registry.npmjs.org/dsh-basemind-plugin/$VERSION"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS "$url" >/dev/null 2>&1; then
               echo "dsh-basemind-plugin@$VERSION is resolvable from the registry"
               exit 0
             fi
