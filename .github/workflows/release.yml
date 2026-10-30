@@ -118,11 +118,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          previous="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          {
+            echo "## 變更"
+            echo
+            if [ -n "$previous" ]; then
+              git log --no-merges --pretty=format:"- %s ([%h](https://github.com/$GITHUB_REPOSITORY/commit/%H))" "$previous..$GITHUB_REF_NAME" | grep -v '^- chore(release):' || true
+            else
+              git log --no-merges --pretty=format:"- %s ([%h](https://github.com/$GITHUB_REPOSITORY/commit/%H))" "$GITHUB_REF_NAME" | grep -v '^- chore(release):' || true
+            fi
+            echo
+            echo
+            echo "**npm**: [dsh-basemind-plugin@$VERSION](https://www.npmjs.com/package/dsh-basemind-plugin/v/$VERSION)"
+            echo
+            if [ -n "$previous" ]; then
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...$GITHUB_REF_NAME"
+            else
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME"
+            fi
+          } > release-notes.md
+          cat release-notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
             gh release upload "$GITHUB_REF_NAME" "$TARBALL" SHA256SUMS.txt --clobber
           else
             gh release create "$GITHUB_REF_NAME" "$TARBALL" SHA256SUMS.txt \
               --verify-tag \
               --title "$GITHUB_REF_NAME" \
-              --generate-notes
+              --notes-file release-notes.md
           fi

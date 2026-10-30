@@ -62,6 +62,10 @@
     "check": "node scripts/check-syntax.mjs && node scripts/check-manifest.mjs",
     "check:pack": "npm pack --json --dry-run > pack.json && node scripts/check-pack.mjs pack.json",
     "verify": "npm run check && npm run check:pack && npm test",
-    "pack": "npm pack"
+    "pack": "npm pack",
+    "preversion": "npm run verify",
+    "release": "npm version patch -m \"chore(release): v%s\" && git push origin main --follow-tags",
+    "release:minor": "npm version minor -m \"chore(release): v%s\" && git push origin main --follow-tags",
+    "release:major": "npm version major -m \"chore(release): v%s\" && git push origin main --follow-tags"
   }
 }
