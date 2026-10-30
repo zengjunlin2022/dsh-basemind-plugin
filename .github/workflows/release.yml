@@ -63,12 +63,10 @@ jobs:
           echo "releasing dsh-basemind-plugin@$version from $GITHUB_REF_NAME"
 
       - name: Run tests
-        run: node --test
+        run: npm test
 
-      - name: Syntax check
-        run: |
-          node --check index.js
-          for file in lib/*.js; do node --check "$file"; done
+      - name: Check the bundle
+        run: npm run check
 
       - name: Pack the tarball
         run: |

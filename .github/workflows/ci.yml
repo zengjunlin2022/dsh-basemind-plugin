@@ -35,19 +35,10 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: Run tests
-        run: node --test
+        run: npm test
 
-      - name: Syntax check
-        shell: bash
-        run: |
-          node --check index.js
-          for file in lib/*.js; do node --check "$file"; done
-
-      - name: Check the bundle manifest
-        run: node scripts/check-manifest.mjs
+      - name: Check the bundle
+        run: npm run check
 
       - name: Check the packed contents
-        shell: bash
-        run: |
-          npm pack --json --dry-run > pack.json
-          node scripts/check-pack.mjs pack.json
+        run: npm run check:pack

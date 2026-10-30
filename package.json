@@ -1,7 +1,7 @@
 {
   "name": "dsh-basemind-plugin",
   "version": "0.1.1",
-  "description": "Workspace-aware BaseMind MCP bridge for DeepSeek Harness that starts its own per-workspace basemind serve relay, so sessions get BaseMind's code-intelligence tools without configuring an MCP server.",
+  "description": "Workspace-aware BaseMind MCP bridge for DeepSeek Harness: every session gets BaseMind's code-intelligence tools for the repository it works in, with no MCP row to configure.",
   "type": "module",
   "main": "index.js",
   "author": "Ken",
@@ -17,10 +17,14 @@
   "keywords": [
     "dsh",
     "dsh-plugin",
+    "dsh-bundle",
     "deepseek-harness",
     "basemind",
     "mcp",
-    "code-intelligence"
+    "mcp-client",
+    "code-intelligence",
+    "code-search",
+    "workspace"
   ],
   "exports": {
     ".": "./index.js",
@@ -53,6 +57,11 @@
     "node": "24.20.0"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "check": "node scripts/check-syntax.mjs && node scripts/check-manifest.mjs",
+    "check:pack": "npm pack --json --dry-run > pack.json && node scripts/check-pack.mjs pack.json",
+    "verify": "npm run check && npm run check:pack && npm test",
+    "pack": "npm pack"
   }
 }
