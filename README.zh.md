@@ -28,13 +28,15 @@ DeepSeek Harness 的工作區感知 BaseMind 橋接插件。安裝這個 bundle 
 npm view dsh-basemind-plugin version
 ```
 
+版本變更記錄見 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 3. 相容性
 
 | 元件 | 需求 |
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`，宣告於 `engines.dsh`，DSH 會在安裝與啟動時檢查。本版本已於 `0.2.1-rc.5` 實測。 |
 | Node.js | `>= 24.20.0`（宣告於 `engines`，並以 Volta 固定）。插件是純 ESM，沒有依賴。 |
-| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。 |
+| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。本版本已於 BaseMind `0.31.1` 實測。 |
 
 ## 4. 安裝
 

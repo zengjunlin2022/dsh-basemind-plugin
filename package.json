@@ -1,6 +1,6 @@
 {
   "name": "dsh-basemind-plugin",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Workspace-aware BaseMind MCP bridge for DeepSeek Harness: every session gets BaseMind's code-intelligence tools for the repository it works in, with no MCP row to configure.",
   "type": "module",
   "main": "index.js",
@@ -39,7 +39,8 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "README.zh.md"
+    "README.zh.md",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
     "access": "public"
