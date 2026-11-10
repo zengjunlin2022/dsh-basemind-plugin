@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-10
+
+### Changed
+
+- Verified against BaseMind **0.32.0** on Windows; no plugin change was required. The relay launches `basemind serve`, completes the MCP handshake (`2025-06-18`), registers the nine tools and both resources (`basemind://status`, `basemind://repo/map`) discovered at runtime, and resolves the workspace root from the session's working directory as before. BaseMind 0.32.0 raised its own Python floor to 3.11, upgraded dependencies (`rmcp` 3.9, `oxc_*` 0.157, `toml` 1.2, `crawlberg` 1.12.4, `tree-sitter-language-pack` 1.24) and bumped `RELEASE_MINOR` 31 → 32, so its next scan re-extracts every indexed file; the tool names, modes and resources the plugin consumes are unchanged.
+- The compatibility table in both READMEs now records BaseMind 0.32.0 as the verified version.
+
 ## [0.1.5] - 2026-11-02
 
 ### Changed
@@ -52,7 +59,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Initial release: a workspace-aware BaseMind MCP bridge for DeepSeek Harness. One relay per workspace root, tools discovered from `tools/list`, BaseMind's server instructions exposed as a system-prompt section, its MCP resources re-exported as the `basemind` resource server, and a `cd` inside a session switching the active workspace without a restart.
 
-[Unreleased]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.2...v0.1.3

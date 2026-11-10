@@ -36,7 +36,7 @@ npm view dsh-basemind-plugin version
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`，宣告於 `engines.dsh`，DSH 會在安裝與啟動時檢查。本版本已於 `0.2.1-rc.5` 實測。 |
 | Node.js | `>= 24.20.0`（宣告於 `engines`，並以 Volta 固定）。插件是純 ESM，沒有依賴。 |
-| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。本版本已於 BaseMind `0.31.1` 實測。 |
+| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。本版本已於 BaseMind `0.32.0` 實測。 |
 
 ## 4. 安裝
 

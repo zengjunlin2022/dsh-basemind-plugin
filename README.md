@@ -36,7 +36,7 @@ Release notes are in [CHANGELOG.md](CHANGELOG.md).
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`, declared in `engines.dsh` and enforced by DSH at install and startup. This version is verified on `0.2.1-rc.5`. |
 | Node.js | `>= 24.20.0` (declared in `engines` and pinned with Volta). The plugin is plain ESM with no dependencies. |
-| BaseMind | Any version. The plugin does not pin or gate BaseMind: the tools it exposes are exactly what the running `basemind serve` advertises through `tools/list`. This version is verified on BaseMind `0.31.1`. |
+| BaseMind | Any version. The plugin does not pin or gate BaseMind: the tools it exposes are exactly what the running `basemind serve` advertises through `tools/list`. This version is verified on BaseMind `0.32.0`. |
 
 ## 4. Install
 
