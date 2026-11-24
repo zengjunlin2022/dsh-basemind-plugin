@@ -20,6 +20,8 @@ DeepSeek Harness 的工作區感知 BaseMind 橋接插件。安裝這個 bundle 
 | 需要設定的列 | 一列 MCP（外加一筆 manager 記錄） | 無——bundle 自己插入插件列 |
 | 多個儲存庫 | 每個再加一列 | 每個根目錄自動一個 relay |
 
+relay 以工作區根目錄為單位。自 BaseMind 0.34.0 起，後方的 index、memory 與 document store 以 **repository group** 為範圍，因此同一儲存庫的兩個 worktree 會共用同一份索引與記憶，不同儲存庫則不會。這是上游行為，不是插件少了隔離層。
+
 ## 2. 版本
 
 插件可在 npm 上以 `dsh-basemind-plugin` 取得，上方 badge 顯示目前版本。若要查詢某個 profile 中的版本：
@@ -36,7 +38,7 @@ npm view dsh-basemind-plugin version
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`，宣告於 `engines.dsh`，DSH 會在安裝與啟動時檢查。本版本已於 `0.2.1-rc.5` 實測。 |
 | Node.js | `>= 24.20.0`（宣告於 `engines`，並以 Volta 固定）。插件是純 ESM，沒有依賴。 |
-| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。本版本已於 BaseMind `0.32.0` 實測。 |
+| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。本版本已於 BaseMind **0.34.0** 實測；0.29.3–0.33.0 以較舊的 mode 型工具提供同樣的程式碼理解能力（另有 `graph`、`web`、`shell`、`workspace`），0.34.0 才改為 verb tools（見 §5.2）。 |
 
 ## 4. 安裝
 
@@ -63,7 +65,7 @@ basemind --version
 
 ### 4.3 驗證
 
-在一個開在專案上的工作階段裡，呼叫 `mcp__basemind__admin`，參數 `{ "mode": "repo" }`。它會回傳該工作階段儲存庫的工作區根目錄與 HEAD。在預設 `serverName` 下會註冊九個工具：`admin`、`agents`、`code`、`git`、`graph`、`memory`、`shell`、`web`、`workspace`。
+在一個開在專案上的工作階段裡，呼叫 `mcp__basemind__index_status`，參數 `{}`。它會回傳該工作階段的索引根目錄、索引 `schema_version` 與 `indexing` 狀態。在預設 `serverName` 下，會註冊 BaseMind 0.34.0 宣告的 15 個 verb tools：`code_grep`、`code_outline`、`code_read`、`code_refs`、`code_search`、`code_symbols`、`docs_search`、`find_files`、`git_blame`、`git_diff`、`git_log`、`index_rescan`、`index_status`、`memory_save`、`memory_search`。comms build 另會註冊 `agent_inbox`、`agent_post`、`agent_threads`。
 
 ### 4.4 更新與移除
 
@@ -72,59 +74,80 @@ basemind --version
 
 ## 5. 使用
 
-每個工具都需要一個必填的 `mode` 加上該模式的參數，呼叫名稱帶 `mcp__basemind__<tool>` 前綴。
+每個工具只做一件事，沒有 `mode`、也沒有 `format` 切換。呼叫名稱帶 `mcp__basemind__<tool>` 前綴。
 
 **先看檔案結構，再決定要不要讀**
 
 ```json
-{ "tool": "mcp__basemind__code", "arguments": { "mode": "outline", "path": "index.js" } }
+{ "tool": "mcp__basemind__code_outline", "arguments": { "path": "index.js" } }
 ```
 
 **找符號定義位置**
 
 ```json
-{ "tool": "mcp__basemind__code", "arguments": { "mode": "symbols", "name": "createWorkspacePool" } }
+{ "tool": "mcp__basemind__code_symbols", "arguments": { "name": "createWorkspacePool" } }
 ```
 
-**找某個符號的所有呼叫點**
+**找某個符號的所有引用**
 
 ```json
-{ "tool": "mcp__basemind__code", "arguments": { "mode": "references", "name": "publicToolName" } }
+{ "tool": "mcp__basemind__code_refs", "arguments": { "name": "publicToolName" } }
+```
+
+**只讀取某個符號的內容**
+
+```json
+{ "tool": "mcp__basemind__code_read", "arguments": { "path": "lib/tool-bridge.js", "symbol": "createToolDefinition" } }
 ```
 
 **以符號解析度讀 git 歷史**
 
 ```json
-{ "tool": "mcp__basemind__git", "arguments": { "mode": "blame_symbol", "path": "index.js", "name": "activate" } }
+{ "tool": "mcp__basemind__git_blame", "arguments": { "path": "index.js", "symbol": "activate" } }
 ```
 
-**看整個儲存庫的架構**
+**看工作區目前的變更**
 
 ```json
-{ "tool": "mcp__basemind__graph", "arguments": { "mode": "map" } }
+{ "tool": "mcp__basemind__git_diff", "arguments": {} }
 ```
 
 **檢查目前工作區的索引狀態**
 
 ```json
-{ "tool": "mcp__basemind__admin", "arguments": { "mode": "status" } }
+{ "tool": "mcp__basemind__index_status", "arguments": {} }
 ```
 
-### 工具
+### 5.1 工具
 
 | 工具 | 涵蓋 |
 |---|---|
-| `mcp__basemind__admin` | status、repo 資訊、rescan、快取統計、gc、telemetry |
-| `mcp__basemind__agents` | 多 agent 通訊 |
-| `mcp__basemind__code` | outline、symbols、grep、files、find、definition、references、callers、implementations、dependents、expand、語意搜尋、chunk |
-| `mcp__basemind__git` | status、歷史、blame、diff |
-| `mcp__basemind__graph` | calls、neighbours、paths、subgraphs、communities、map、export |
-| `mcp__basemind__memory` | memory put/recall、文件搜尋 |
-| `mcp__basemind__shell` | 長駐 shell session |
-| `mcp__basemind__web` | scrape、crawl、list |
-| `mcp__basemind__workspace` | workspaces、worktrees、branches、claims |
+| `mcp__basemind__code_outline` | 單一檔案中的符號 |
+| `mcp__basemind__code_symbols` | 依名稱找符號 |
+| `mcp__basemind__code_grep` | 已索引檔案中的字面文字或 regex 搜尋（regex 需 `regex: true`） |
+| `mcp__basemind__code_search` | 語意程式碼搜尋 |
+| `mcp__basemind__code_read` | 單一符號內容，或精確的行範圍 |
+| `mcp__basemind__code_refs` | 引用、呼叫者、實作、importers、定義（用 `relation` 指定） |
+| `mcp__basemind__find_files` | 依檔名找檔案 |
+| `mcp__basemind__docs_search` | 專案文件 |
+| `mcp__basemind__memory_save`、`mcp__basemind__memory_search` | key/value 記憶與其搜尋 |
+| `mcp__basemind__git_log`、`mcp__basemind__git_diff`、`mcp__basemind__git_blame` | 歷史、工作區差異、blame |
+| `mcp__basemind__index_status`、`mcp__basemind__index_rescan` | 索引狀態與重新掃描（`{}` 代表整個工作區） |
+| `mcp__basemind__agent_inbox`、`mcp__basemind__agent_post`、`mcp__basemind__agent_threads` | agent 通訊（僅 comms build） |
 
-模式清單取自執行中的 BaseMind，較新版本可能提供更多。BaseMind 的 MCP resources（`basemind://status`、`basemind://repo/map`）以 resource server `basemind` 提供，因此 `list_mcp_resources` 與 `read_mcp_resource` 都能對它們運作。
+工具清單取自執行中的 BaseMind，較新版本可能提供更多。
+
+部分工具以行導向文字或 [TOON](https://toonformat.dev) 回應，而非 JSON（`code_outline`、`code_grep`、`find_files`、`git_diff`）。插件只投影伺服器送來的文字，不做解析；0.34.0 每個結果的機器可讀形式都在 MCP `structuredContent`，插件會將它保留在 result envelope 中。請不要對文字區塊做 `JSON.parse`。
+
+BaseMind 的 MCP resources（`basemind://status`，以及 `basemind://outline/{path}`、`basemind://memory/{key}` 兩個 template）以 resource server `basemind` 提供，因此 `list_mcp_resources` 與 `read_mcp_resource` 都能運作。`basemind://repo/map` 已隨 `graph` 工具在上游移除。
+
+### 5.2 將既有安裝升級到 BaseMind 0.34.0
+
+1. `basemind comms stop`——0.33 的 daemon 無法服務 0.34 client；兩者同時存在時，工具呼叫會得到可重試的 `-32003` / `backend_unavailable`。
+2. `basemind scan`——0.34.0 把 release minor 由 33 升到 34，每個 view 會重建一次索引，blob store 移到 `cache/blobs/v34/`。
+3. 重開每個 DSH 工作階段——插件會在新的 relay 上重新發現工具清單。
+
+工具名稱已變更：`mcp__basemind__code`、`__git`、`__memory`、`__admin`、`__graph`、`__web`、`__shell`、`__workspace`、`__agents` 已不存在，任何寫死這些名稱的權限設定、preset prompt 或腳本都必須更新。插件不會代為改寫 preset 或權限檔。
 
 ---
 

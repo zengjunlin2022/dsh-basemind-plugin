@@ -1,0 +1,913 @@
+[
+  {
+    "name": "agent_inbox",
+    "title": "Read agent messages",
+    "description": "Use to read messages other agents sent you, bodies inline. No arguments returns your unread messages from every thread and marks them read; `peek` leaves them unread, `unread:false` rereads history, `id` returns one whole message. `more:true` means call again; a body over 4 KB is cut (`truncated`) and read whole by `id`. Example: {\"wait_secs\":30}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "thread": {
+          "description": "Only this thread.",
+          "type": "string"
+        },
+        "id": {
+          "description": "One message by id, with its whole body. Only `as` may accompany it.",
+          "type": "string"
+        },
+        "unread": {
+          "description": "Default true. False reads history, your own posts included, and marks nothing.",
+          "type": "boolean"
+        },
+        "peek": {
+          "description": "Return unread messages without marking them read.",
+          "type": "boolean"
+        },
+        "wait_secs": {
+          "description": "When nothing is unread, wait up to this many seconds (0-40) for a message.",
+          "type": "integer"
+        },
+        "limit": {
+          "description": "Max messages (default 20, max 100).",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "`next_cursor` of the previous `peek` or `unread:false` page.",
+          "type": "string"
+        },
+        "as": {
+          "description": "Sub-identity to read as; see `agent_post`.",
+          "type": "string"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "agent_post",
+    "title": "Message agents",
+    "description": "Use to message other agents working in this repository. Needs `body` and exactly one of `subject` (start a thread), `thread` (post into one) or `reply_to` (answer a message). A new thread is open to the repository unless `to` names its members. Example: {\"subject\":\"Refactoring src/auth\",\"body\":\"Taking src/auth/token.rs; tell me if you are in it.\",\"paths\":[\"src/auth\"]}",
+    "inputSchema": {
+      "properties": {
+        "body": {
+          "description": "The message, at most 16 KiB.",
+          "type": "string"
+        },
+        "thread": {
+          "description": "Thread to post into, e.g. `t-abcdef`.",
+          "type": "string"
+        },
+        "reply_to": {
+          "description": "Message to answer, e.g. `t-abcdef.3`; posts into its thread.",
+          "type": "string"
+        },
+        "subject": {
+          "description": "Starts a new thread: its one-line topic, at most 200 bytes.",
+          "type": "string"
+        },
+        "to": {
+          "description": "With `subject`: agent ids that become members; the thread is then invitation-only.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "description": "With `subject`: repo-relative path prefixes the thread is about.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "as": {
+          "description": "Sub-identity to act as, `[a-z0-9_-]{1,32}`. A subagent passes its own name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "agent_threads",
+    "title": "Agent threads",
+    "description": "Use to see which agent threads exist and who is in them, or to change membership. No arguments lists your threads with unread counts and peers; `query` or `path` also finds open threads of this repository; `thread` alone describes one. With `thread`, at most one of `join`, `leave`, `invite`, `archive` changes it. Example: {\"thread\":\"t-abcdef\",\"join\":true}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "description": "List threads whose subject contains this (3+ characters).",
+          "type": "string"
+        },
+        "path": {
+          "description": "List threads about this repo-relative path.",
+          "type": "string"
+        },
+        "thread": {
+          "description": "Thread to describe, or to change with one of `join`, `leave`, `invite`, `archive`.",
+          "type": "string"
+        },
+        "join": {
+          "description": "Become a member of `thread`.",
+          "type": "boolean"
+        },
+        "leave": {
+          "description": "Stop being a member of `thread`.",
+          "type": "boolean"
+        },
+        "invite": {
+          "description": "Agent ids to make members of `thread`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "archive": {
+          "description": "Close `thread` to new posts; only its creator may.",
+          "type": "boolean"
+        },
+        "archived": {
+          "description": "Include archived threads in a listing.",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Max threads (default 20, max 100).",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "`next_cursor` of the previous listing page.",
+          "type": "string"
+        },
+        "as": {
+          "description": "Sub-identity to act as; see `agent_post`.",
+          "type": "string"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "code_grep",
+    "title": "Search code and text files",
+    "description": "Use instead of `rg`/`grep` for exact text (a string, identifier or comment) in indexed code and text files (markdown, config, data; not PDFs). Rows `<line>: <text>` (`<line>-`: context) sit under `# <file>` and `## <symbol>` headers, after `stale` (edited since indexing), `skipped_files` (unsearchable) and `total` (with `next_cursor`: hits from `cursor` on). A `path` or `language` matching no indexed file is an error. Example: {\"pattern\":\"cache_root(\",\"path\":\"src/\"}",
+    "inputSchema": {
+      "properties": {
+        "pattern": {
+          "description": "Text to find, not empty; a literal unless `regex` is true.",
+          "type": "string"
+        },
+        "regex": {
+          "description": "Treat `pattern` as a Rust regex; `^` and `$` match at every line.",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Prefix, or a glob when it has `*`, e.g. `src/`.",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language filter, e.g. `rust`.",
+          "type": "string"
+        },
+        "context": {
+          "description": "Lines before and after each hit, 0-10.",
+          "type": "integer"
+        },
+        "limit": {
+          "description": "Default 100.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        },
+        "changed": {
+          "description": "Files changed since rev's merge base (empty: HEAD), A..B or A...B; main...HEAD+importers adds importers.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "code_outline",
+    "title": "Outline a file",
+    "description": "Use to see what a file contains before, or instead of, reading it: each symbol's kind, signature and 1-based `line`/`end_line`, plus its imports. Feed a span to `code_read`. Code files only. `stale`: edited since indexing; outlined as it is now. Example: {\"path\":\"src/store.rs\"}",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "description": "Repo-relative file path.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Default 500.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "code_read",
+    "title": "Read a symbol or line span",
+    "description": "Use to read one function or type, or an exact line span, instead of the whole file. A body over 128 KiB is cut (at a line end if it can) and flagged `truncated`: read on from `end_line` + 1. `stale`: edited since indexing; parsed as it is now. Example: {\"path\":\"src/store.rs\",\"symbol\":\"open\"}",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "description": "Repo-relative file path.",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Symbol whose body to return (exact name).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "With `symbol`: its kind, when several share the name.",
+          "type": "string"
+        },
+        "line": {
+          "description": "First line of a span, 1-based. With `symbol`: a line inside the definition meant.",
+          "type": "integer"
+        },
+        "end_line": {
+          "description": "Last line of a span, inclusive (default: `line`). Not with `symbol`.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "code_refs",
+    "title": "Find call sites, implementations and importers",
+    "description": "Use for what calls, implements or imports X, or which definition a use binds to (`relation`). Callers are call sites, not type uses or `use` lines. `hits` maps files to rows: `line`, `callee` if not `name`, `stale` if edited since. A row without `resolution` has the page's `resolution_default` (none: name_only). Resolutions: same_file, imported, scope_resolved (a local binding), elsewhere (not the pinned definition), name_only (unchecked; see `resolution_note`), external (not indexed), path_match (HTTP call by literal URL to route `name`, e.g. `GET /a/{id}`, or a pinned handler; `ambiguous`: routes tie). Example: {\"name\":\"open_store\",\"path\":\"src/store.rs\"}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Name called, implemented or defined; for `importers`, whole segments of the import path.",
+          "type": "string"
+        },
+        "relation": {
+          "description": "What to list (default `callers`). `definition` takes no `limit`, `cursor` or `max_tokens`.",
+          "type": "string",
+          "enum": [
+            "callers",
+            "implementations",
+            "importers",
+            "definition",
+            "cycles"
+          ]
+        },
+        "path": {
+          "description": "`callers`: the file defining `name`, to pin it. `definition`: the reference's file (required).\n`importers`/`cycles`: that file (no `name`).",
+          "type": "string"
+        },
+        "line": {
+          "description": "Needs `path`. `callers`: a 1-based line inside the definition meant. `definition`: the\nreference's line (required).",
+          "type": "integer"
+        },
+        "column": {
+          "description": "`definition` only: 1-based column (default: where `name` is on the line).",
+          "type": "integer"
+        },
+        "depth": {
+          "description": "`importers`+`path`: hops (default 1, max 5); `deeper`: more beyond.",
+          "type": "integer"
+        },
+        "match": {
+          "description": "`exact` (default): the name or a path ending in it; `substring`: names holding it. Not with\n`importers`/`definition`.",
+          "type": "string",
+          "enum": [
+            "exact",
+            "substring"
+          ]
+        },
+        "limit": {
+          "description": "Default 100.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        },
+        "resolution": {
+          "description": "`callers` only: keep rows of these resolutions, comma-separated.",
+          "type": "string"
+        },
+        "changed": {
+          "description": "`callers` only: files changed since rev's merge base (empty: HEAD), A..B or A...B; main...HEAD+importers adds importers.",
+          "type": "string"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "code_search",
+    "title": "Search code by meaning",
+    "description": "Use when you know what the code does but not a name or string in it: searches code by meaning and returns pointers (path, `line`/`end_line`, symbol), not bodies; copies of a file share a hit (`also_at`). `lanes_unavailable`: lanes that did not run. Read a hit with `code_read`. Example: {\"query\":\"retry a failed upload with backoff\"}",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "What the code does, in plain words.",
+          "type": "string"
+        },
+        "lane": {
+          "description": "Retrieval lane (default `hybrid`).",
+          "type": "string",
+          "enum": [
+            "hybrid",
+            "semantic",
+            "keyword"
+          ]
+        },
+        "path": {
+          "description": "Prefix, or a glob when it has `*`, e.g. `src/`.",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language, e.g. `rust`.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Default 10.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        },
+        "changed": {
+          "description": "Files changed since rev's merge base (empty: HEAD), A..B or A...B; main...HEAD+importers adds importers.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "code_symbols",
+    "title": "Find a definition",
+    "description": "Use for \"where is X defined\" when you know (part of) the name: finds functions, types, constants and other symbols; a row is `\"<path>:<line>: <signature>\"`. Ranked exact, prefix, substring, then `fuzzy`; `stale`: files edited since indexing (lines current). Definitions only; for other text, `code_grep`. Example: {\"name\":\"parse_config\",\"kind\":\"function\"}",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "description": "Symbol name or fragment (case-sensitive).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "function, method, struct, enum, class, interface, trait, type, const, module, macro, route.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Prefix, or a glob when it has `*`, e.g. `src/`.",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language, e.g. `rust`.",
+          "type": "string"
+        },
+        "fuzzy": {
+          "description": "Also match the name as a fuzzy subsequence, ranked last.",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Default 100.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        },
+        "changed": {
+          "description": "Files changed since rev's merge base (empty: HEAD), A..B or A...B; main...HEAD+importers adds importers.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "docs_search",
+    "title": "Search documents",
+    "description": "Use to find where a topic is discussed in the repository's documents (markdown, PDFs, Office, HTML, email, notebooks) instead of opening them. Ranks passages by meaning and words after the filters, citing path, pages, section and lines. Code: `code_grep`/`code_search`. Example: {\"query\":\"how releases are versioned\"}",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "description": "What to look for, in plain words.",
+          "type": "string"
+        },
+        "mime_type": {
+          "description": "Exact MIME filter, e.g. `application/pdf`.",
+          "type": "string"
+        },
+        "format": {
+          "description": "pdf, office, html, markdown, email, notebook, text or other.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Prefix, or a glob when it has `*`, e.g. `src/`.",
+          "type": "string"
+        },
+        "keywords": {
+          "description": "Whole keywords, comma-separated; any one matches.",
+          "type": "string"
+        },
+        "entity": {
+          "description": "Keep chunks naming an entity of this category, e.g. `PERSON`.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Default 10.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "find_files",
+    "title": "Find files",
+    "description": "Use instead of `find`/`fd`/`ls -R` to locate a file by a fuzzy fragment of its name or path (one typo allowed), or to list files without `query`. Covers every file git tracks. A `path` or `language` no listed file has is an error. Example: {\"query\":\"readme\"}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "description": "Fuzzy fragment of a file name or path; omit to list.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Prefix, or a glob when it has `*`, e.g. `src/`.",
+          "type": "string"
+        },
+        "language": {
+          "description": "Language filter, e.g. `rust`, `markdown`.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Default 200.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        },
+        "min_lines": {
+          "description": "Only code files of at least this many lines, largest first; `files` maps path to lines.",
+          "type": "integer"
+        },
+        "changed": {
+          "description": "Files changed since rev's merge base (empty: HEAD), A..B or A...B; main...HEAD+importers adds importers.",
+          "type": "string"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "git_blame",
+    "title": "Blame",
+    "description": "Use instead of `git blame` for \"who last changed this\": per-line authorship of a file, a 1-based `line`..`end_line` span or one `symbol`, at `rev`. `hunks`: `\"<line>[-<end>] <sha>[ <old path>]\"` (old path when moved); `commits`: each sha's author, time and summary. Example: {\"path\":\"src/store.rs\",\"symbol\":\"open\"}",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "description": "Repo-relative file path.",
+          "type": "string"
+        },
+        "line": {
+          "description": "First line of a span, 1-based, as numbered at `rev`. With `symbol`: a line inside the\ndefinition meant.",
+          "type": "integer"
+        },
+        "end_line": {
+          "description": "Last line of a span, inclusive (default: `line`). Needs `line`; not with `symbol`.",
+          "type": "integer"
+        },
+        "symbol": {
+          "description": "Blame this symbol's lines, as they are at `rev`, instead of a span.",
+          "type": "string"
+        },
+        "rev": {
+          "description": "Revision to blame at (default HEAD).",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Merged hunks; default 100.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "git_diff",
+    "title": "Diff and status",
+    "description": "Use instead of `git status`/`git diff`. No arguments: the working-tree status (staged, modified, untracked; 200 paths a list). A file `path` diffs its working tree against HEAD, or `from`/`to`; `structural`: symbols added and removed and a `common` count. A diff over 200 hunks or 128 KiB is cut (`truncated`). Example: {\"path\":\"src/store.rs\",\"from\":\"HEAD~1\",\"to\":\"HEAD\"}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "File to diff, or a directory ending in `/` to narrow the status; omit every argument for\nthe whole working-tree status.",
+          "type": "string"
+        },
+        "from": {
+          "description": "Old revision (default HEAD). Needs `path`.",
+          "type": "string"
+        },
+        "to": {
+          "description": "New revision (default: the working tree). Needs `path`; not with `structural`.",
+          "type": "string"
+        },
+        "structural": {
+          "description": "Symbol-level diff of `from` against the indexed working tree, not text hunks.",
+          "type": "boolean"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "git_log",
+    "title": "Commit history",
+    "description": "Use instead of `git log`/`git show` for \"what changed recently\", \"what touched this file or function\" or \"which commit mentions X\". `{}` lists recent commits; `path`, `query`/`author`, `path`+`symbol` or `rev` narrow it. Rows: `\"<sha> <summary>\"`, `[introduced]`/`[removed]` for a symbol; recent and directory lists add `files` (sha to path to change). `rev`: one commit whole. Symbol and directory history is read in commit batches: an empty page with `next_cursor` is not the end. Example: {\"path\":\"src/store.rs\",\"limit\":5}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Only commits touching this file, or a directory (trailing `/`; 200 commits a page). Not with\n`query` or `author`.",
+          "type": "string"
+        },
+        "query": {
+          "description": "Words the commit message must all contain. Combines with `author` only.",
+          "type": "string"
+        },
+        "author": {
+          "description": "Words the author name or email must all contain; rows then name the author. Combines with\n`query` only.",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "Commits that changed this symbol's body; needs `path`, combines only with `line`.",
+          "type": "string"
+        },
+        "line": {
+          "description": "With `symbol`: a 1-based line inside the definition meant.",
+          "type": "integer"
+        },
+        "rev": {
+          "description": "Show this one commit in full; `max_tokens` bounds its file list. Combines with nothing.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Default 20.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior `next_cursor`.",
+          "type": "string"
+        },
+        "max_tokens": {
+          "description": "Default 6000.",
+          "type": "integer"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "index_rescan",
+    "title": "Re-index",
+    "description": "Use when a result says stale or a new file is missing (the index follows edits): re-indexes `paths`; with none, the whole workspace (an empty, degraded or rescan_needed index, or changed `scan.extra_roots` files, which `paths` skips). Writes only the cache. Example: {\"paths\":[\"src/store.rs\"]}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "description": "Repo-relative files or directories to re-index (default: the whole workspace).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "index_status",
+    "title": "Index status",
+    "description": "Use when a result is unexpectedly empty or says \"not indexed\": reports files indexed per language, whether a scan is running or the index is degraded, the cache directory, and the branch and HEAD. Example: {}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "memory_save",
+    "title": "Save a note",
+    "description": "Use to remember a decision, convention or finding for later sessions and other agents in this repository. Saving an existing `key` replaces it. Notes are plain text on local disk: never save secrets. Example: {\"key\":\"decision/auth-tokens\",\"value\":\"Tokens rotate every 24h.\",\"tags\":[\"auth\"]}",
+    "inputSchema": {
+      "properties": {
+        "key": {
+          "description": "Stable identifier, e.g. `decision/auth-tokens`.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The note.",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Labels to filter on later.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "visibility": {
+          "description": "`group` (default, cross-agent) or `individual` (the workspace owner's).",
+          "type": "string",
+          "enum": [
+            "group",
+            "individual"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  },
+  {
+    "name": "memory_search",
+    "title": "Recall notes",
+    "description": "Use to recall notes saved with `memory_save`: `query` searches by meaning (by words when no model loads), `key` reads one, `prefix` lists by key prefix, no arguments lists all. Lists show 200 characters of a value; `key` reads it whole. Example: {\"query\":\"token rotation\"}",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "description": "Search by meaning. At most one of `query`, `key`, `prefix`; none lists every note.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Read one note by exact key.",
+          "type": "string"
+        },
+        "prefix": {
+          "description": "List notes whose key starts with this.",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Notes carrying any of these. Not with `key`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "visibility": {
+          "description": "`group` (default, cross-agent) or `individual` (the workspace owner's).",
+          "type": "string",
+          "enum": [
+            "group",
+            "individual"
+          ]
+        },
+        "limit": {
+          "description": "Max notes (default 10 for `query`, 100 for a listing). Not with `key`.",
+          "type": "integer"
+        },
+        "cursor": {
+          "description": "A prior listing's `next_cursor`. Not with `query` or `key`.",
+          "type": "string"
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "_meta": {
+      "anthropic/alwaysLoad": true
+    }
+  }
+]

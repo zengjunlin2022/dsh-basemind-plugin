@@ -62,7 +62,34 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "releasing dsh-basemind-plugin@$version from $GITHUB_REF_NAME"
 
+      - name: Install a real BaseMind for the integration gate
+        # The integration suites skip when no binary is present, and a skipped run must
+        # never count as a pass for a release. The binary is pinned, checksum-verified
+        # and required by BASEMIND_REQUIRE_INTEGRATION below.
+        run: |
+          version=0.34.0
+          base="https://github.com/Goldziher/basemind/releases/download/v${version}"
+          asset="basemind-x86_64-unknown-linux-gnu.tar.gz"
+          mkdir -p "$RUNNER_TEMP/basemind"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$asset" "$base/$asset"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/checksums.txt" "$base/basemind_${version}_checksums.txt"
+          if ! (cd "$RUNNER_TEMP" && grep " $asset\$" checksums.txt | sha256sum -c -); then
+            echo "::error::the BaseMind $version asset did not match its published checksum"
+            exit 1
+          fi
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/basemind"
+          bin="$(find "$RUNNER_TEMP/basemind" -maxdepth 2 -type f -name basemind | head -n1)"
+          if [ -z "$bin" ]; then
+            echo "::error::the BaseMind archive did not contain a basemind binary"
+            exit 1
+          fi
+          chmod +x "$bin"
+          "$bin" --version
+          echo "BASEMIND_BIN=$bin" >> "$GITHUB_ENV"
+
       - name: Run tests
+        env:
+          BASEMIND_REQUIRE_INTEGRATION: '1'
         run: npm test
 
       - name: Check the bundle

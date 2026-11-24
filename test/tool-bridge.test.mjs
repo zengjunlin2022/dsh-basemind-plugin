@@ -277,3 +277,111 @@ test('execute wraps transport failures with the tool name and workspace root', a
     },
   )
 })
+
+test('execute keeps the MCP structuredContent on success', async () => {
+  const structuredContent = { files: ['src/x.js'], total: 1 }
+  const definition = createToolDefinition({
+    serverName: 'basemind',
+    rawTool: rawTool(),
+    pool: fakePool(
+      fakeSession({
+        result: { content: [{ type: 'text', text: 'files[1]: src/x.js' }], structuredContent, isError: false },
+      }),
+    ),
+    ctx: fakeContext(),
+    config: SETTINGS,
+  })
+  const value = await definition.execute({ mode: 'outline' }, { agent: AGENT, signal: new AbortController().signal })
+  assert.deepEqual(value.structuredContent, structuredContent)
+  assert.equal(value.text, 'files[1]: src/x.js')
+  assert.equal(value.isError, false)
+})
+
+test('execute omits structuredContent when the server does not send one', async () => {
+  const definition = createToolDefinition({
+    serverName: 'basemind',
+    rawTool: rawTool(),
+    pool: fakePool(fakeSession({ result: { content: [{ type: 'text', text: 'outline ok' }], isError: false } })),
+    ctx: fakeContext(),
+    config: SETTINGS,
+  })
+  const value = await definition.execute({ mode: 'outline' }, { agent: AGENT, signal: new AbortController().signal })
+  assert.equal('structuredContent' in value, false)
+})
+
+test('execute appends the error code and retryable flag to an isError message', async () => {
+  const definition = createToolDefinition({
+    serverName: 'basemind',
+    rawTool: rawTool(),
+    pool: fakePool(
+      fakeSession({
+        result: {
+          content: [{ type: 'text', text: 'the index is busy' }],
+          structuredContent: { error: 'busy', retryable: true },
+          isError: true,
+        },
+      }),
+    ),
+    ctx: fakeContext(),
+    config: SETTINGS,
+  })
+  await assert.rejects(
+    () => definition.execute({ mode: 'outline' }, { agent: AGENT, signal: new AbortController().signal }),
+    (error) => {
+      assert.match(error.message, /the index is busy/)
+      assert.match(error.message, /\[error=busy, retryable\]/)
+      return true
+    },
+  )
+})
+
+test('execute keeps the plain message for an isError result without structuredContent', async () => {
+  const definition = createToolDefinition({
+    serverName: 'basemind',
+    rawTool: rawTool(),
+    pool: fakePool(fakeSession({ result: { content: [{ type: 'text', text: 'no such file' }], isError: true } })),
+    ctx: fakeContext(),
+    config: SETTINGS,
+  })
+  await assert.rejects(
+    () => definition.execute({ mode: 'outline' }, { agent: AGENT, signal: new AbortController().signal }),
+    (error) => {
+      assert.equal(error.message, 'no such file')
+      return true
+    },
+  )
+})
+
+test('execute appends the JSON-RPC error code to a transport failure', async () => {
+  const failure = new Error('basemind tools/call failed: tool not found')
+  failure.code = -32602
+  const definition = createToolDefinition({
+    serverName: 'basemind',
+    rawTool: rawTool(),
+    pool: fakePool(fakeSession({ error: failure })),
+    ctx: fakeContext({ root: 'D:\\repo-d' }),
+    config: SETTINGS,
+  })
+  await assert.rejects(
+    () => definition.execute({ mode: 'outline' }, { agent: AGENT, signal: new AbortController().signal }),
+    (error) => {
+      assert.match(error.message, /-32602/)
+      assert.match(error.message, /tool not found/)
+      assert.match(error.message, /D:\\repo-d/)
+      return true
+    },
+  )
+})
+
+test('output.render projects TOON text as a single text block without parsing it', () => {
+  const definition = createToolDefinition({
+    serverName: 'basemind',
+    rawTool: rawTool(),
+    pool: fakePool(fakeSession()),
+    ctx: fakeContext(),
+    config: SETTINGS,
+  })
+  const toon = 'path: src/x.js\nsymbols[1]{name,kind}:\n  add,function'
+  const blocks = definition.output.render({}, { text: toon, content: [], isError: false })
+  assert.deepEqual(blocks, [{ type: 'text', text: toon }])
+})

@@ -404,6 +404,41 @@ test('unload removes every registration and terminates the spawned relays', asyn
   }
 })
 
+test('a 0.34 profile registers the verb tools and none of the retired names', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ env: { FAKE_MCP_PROFILE: '0.34' } }))
+  await waitFor(() => ctx.tools.get('mcp__basemind__code_grep') !== undefined, { label: 'the verb tools' })
+
+  for (const name of ['code_outline', 'code_grep', 'code_read', 'find_files', 'index_status']) {
+    assert.ok(ctx.tools.get(`mcp__basemind__${name}`), `${name} is registered`)
+  }
+  for (const retired of ['code', 'git', 'memory', 'admin', 'graph', 'web', 'shell', 'workspace', 'agents']) {
+    assert.equal(ctx.tools.get(`mcp__basemind__${retired}`), undefined, `${retired} must not be registered`)
+  }
+})
+
+test('a 0.34 call keeps structuredContent in the tool envelope', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ env: { FAKE_MCP_PROFILE: '0.34' } }))
+  await waitFor(() => ctx.tools.get('mcp__basemind__code_grep') !== undefined, { label: 'the verb tools' })
+
+  const value = await call(ctx, 'mcp__basemind__code_grep', { pattern: 'add' })
+  assert.match(value.text, /^# src\/math\.js/)
+  assert.equal(value.isError, false)
+  assert.deepEqual(value.structuredContent.hits, { 'src/math.js': { add: ['1: function add(a, b)'] } })
+})
+
+test('a 0.34 fixable error reaches the model with its code', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ env: { FAKE_MCP_PROFILE: '0.34' } }))
+  await waitFor(() => ctx.tools.get('mcp__basemind__code_read') !== undefined, { label: 'the verb tools' })
+
+  await assert.rejects(() => call(ctx, 'mcp__basemind__code_read', { path: 'src/math.js' }), /invalid_argument/)
+})
+
 test('failOnStartupError surfaces an unresolvable launcher from apply', async () => {
   const ctx = createFakeContext({ launchable: false })
   ctx.effect = (callback) => callback()

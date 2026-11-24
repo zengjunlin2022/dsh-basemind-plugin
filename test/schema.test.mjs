@@ -441,3 +441,100 @@ test('validateJsonSchemaNode reports every category of violation with a path', (
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// BaseMind 0.34.0 contract
+//
+// 0.34.0 replaced the mode-dispatch tools (`code`, `git`, `memory`, `admin`, ...)
+// with 15 verb tools plus 3 agent tools. This fixture is a raw `tools/list`
+// capture from an isolated BaseMind 0.34.0 run and is never hand-edited.
+// ---------------------------------------------------------------------------
+
+const fixture034Url = new URL('../fixtures/basemind-0.34.0-tools.json', import.meta.url);
+const tools034 = JSON.parse(readFileSync(fixture034Url, 'utf8'));
+const instructions034Url = new URL('../fixtures/basemind-0.34.0-instructions.txt', import.meta.url);
+const instructions034 = readFileSync(instructions034Url, 'utf8');
+
+const VERB_TOOLS_034 = [
+  'code_grep',
+  'code_outline',
+  'code_read',
+  'code_refs',
+  'code_search',
+  'code_symbols',
+  'docs_search',
+  'find_files',
+  'git_blame',
+  'git_diff',
+  'git_log',
+  'index_rescan',
+  'index_status',
+  'memory_save',
+  'memory_search',
+];
+const AGENT_TOOLS_034 = ['agent_inbox', 'agent_post', 'agent_threads'];
+const RETIRED_TOOLS = ['admin', 'agents', 'code', 'git', 'graph', 'memory', 'shell', 'web', 'workspace'];
+
+test('the 0.34.0 fixture advertises 15 verb tools plus 3 agent tools and no retired name', () => {
+  const names = tools034.map((tool) => tool.name);
+  assert.equal(tools034.length, 18);
+  for (const name of VERB_TOOLS_034) assert.ok(names.includes(name), `0.34.0 must advertise ${name}`);
+  for (const name of AGENT_TOOLS_034) assert.ok(names.includes(name), `0.34.0 must advertise ${name}`);
+  for (const retired of RETIRED_TOOLS) {
+    assert.equal(names.includes(retired), false, `${retired} is retired in 0.34.0`);
+  }
+});
+
+test('0.34.0 instructions are non-empty and stay under the plugin section limit', () => {
+  assert.ok(instructions034.trim().length > 0, 'the 0.34.0 instructions fixture is not empty');
+  assert.ok(Buffer.byteLength(instructions034, 'utf8') < 32 * 1024);
+});
+
+test('normalizes every BaseMind 0.34.0 input schema without losing a constraint', () => {
+  for (const tool of tools034) {
+    const normalized = normalizeInputSchema(tool.inputSchema);
+    assert.equal(normalized.type, 'object', `${tool.name} root must be an object`);
+    const verdict = validateJsonSchemaNode(normalized);
+    assert.equal(verdict.ok, true, `${tool.name}: ${verdict.ok ? '' : verdict.errors.join('; ')}`);
+
+    const rawProperties = Object.keys(tool.inputSchema.properties ?? {});
+    assert.deepEqual(
+      Object.keys(normalized.properties ?? {}).sort(),
+      [...rawProperties].sort(),
+      `${tool.name} keeps every property`,
+    );
+    assert.deepEqual(
+      [...(normalized.required ?? [])],
+      [...(tool.inputSchema.required ?? [])],
+      `${tool.name} keeps required`,
+    );
+    for (const name of rawProperties) {
+      const rawEnum = tool.inputSchema.properties[name].enum;
+      if (!Array.isArray(rawEnum)) continue;
+      assert.deepEqual(normalized.properties[name].enum, rawEnum, `${tool.name}.${name} keeps its enum`);
+    }
+    assert.equal('mode' in (normalized.properties ?? {}), false, `${tool.name} has no mode switch`);
+
+    const keys = schemaNodeKeys(normalized);
+    for (const keyword of FORBIDDEN_NODE_KEYS) {
+      assert.ok(!keys.has(keyword), `${tool.name} must not retain the ${keyword} keyword`);
+    }
+  }
+});
+
+test('0.34.0 keeps the official code_read schema and drops mode/format switches', () => {
+  const byName = new Map(tools034.map((tool) => [tool.name, tool]));
+  const codeRead = normalizeInputSchema(byName.get('code_read').inputSchema);
+  assert.deepEqual(codeRead.required, ['path']);
+  assert.ok('symbol' in codeRead.properties, 'code_read accepts a symbol selector');
+  assert.ok('line' in codeRead.properties, 'code_read accepts a line selector');
+
+  const grep = normalizeInputSchema(byName.get('code_grep').inputSchema);
+  assert.equal(grep.properties.pattern.type, 'string');
+
+  for (const name of ['code_grep', 'code_outline', 'git_diff', 'find_files']) {
+    const schema = normalizeInputSchema(byName.get(name).inputSchema);
+    assert.equal('mode' in (schema.properties ?? {}), false, `${name} has no mode`);
+    assert.equal('format' in (schema.properties ?? {}), false, `${name} has no format switch`);
+  }
+});

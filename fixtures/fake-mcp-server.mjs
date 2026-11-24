@@ -27,7 +27,10 @@ const rejectVersions = new Set(
 )
 const paginate = (process.env.FAKE_MCP_PAGE_TOKENS ?? '') !== ''
 
-const baseTools = [
+const profile = (process.env.FAKE_MCP_PROFILE ?? '').trim()
+
+/** Tools the 0.29-era profile advertises (mode dispatch). */
+const legacyTools = [
   {
     name: 'code',
     description: 'Fake code intelligence tool.',
@@ -52,8 +55,58 @@ const baseTools = [
   },
 ]
 
+/**
+ * Tools the 0.34.0 profile advertises: verb tools, no `mode` dispatch and no
+ * retired name. Shapes follow the real 0.34.0 `tools/list` capture.
+ */
+const verbTools = [
+  {
+    name: 'code_outline',
+    title: 'Outline a file',
+    description: 'Use to list the symbols in one file.',
+    inputSchema: { type: 'object', required: ['path'], properties: { path: { type: 'string' } } },
+  },
+  {
+    name: 'code_grep',
+    title: 'Search code',
+    description: 'Use to grep the indexed code.',
+    inputSchema: {
+      type: 'object',
+      required: ['pattern'],
+      properties: { pattern: { type: 'string' }, regex: { type: 'boolean' } },
+    },
+  },
+  {
+    name: 'code_read',
+    title: 'Read code',
+    description: 'Use to read a symbol or a line range from one file.',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string' },
+        symbol: { type: 'string' },
+        line: { type: 'integer' },
+        end_line: { type: 'integer' },
+      },
+    },
+  },
+  {
+    name: 'find_files',
+    title: 'Find files',
+    description: 'Use to locate files by name.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+  },
+  {
+    name: 'index_status',
+    title: 'Index status',
+    description: 'Use to read the index status of the workspace.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+]
+
 /** Live advertised tool list; `admin` can append to it on request. */
-let tools = [...baseTools]
+let tools = [...(profile === '0.34' ? verbTools : legacyTools)]
 
 const send = (message) => {
   process.stdout.write(`${JSON.stringify(message)}\n`)
@@ -70,9 +123,64 @@ const toolListResult = (cursor) => {
   return { tools: [] }
 }
 
+/**
+ * Answer the verb-tool profile the way BaseMind 0.34.0 does: line-oriented or
+ * TOON text plus `structuredContent`, and a fixable problem as an `isError`
+ * result carrying `{ error, retryable }`.
+ */
+const handleVerbCall = (id, name, args) => {
+  switch (name) {
+    case 'code_grep':
+      reply(id, {
+        content: [{ type: 'text', text: '# src/math.js\n## add\n1: function add(a, b)' }],
+        // Real 0.34.0 groups hits by path and then by symbol: { "<path>": { "<symbol>": ["<line>: <text>"] } }.
+        structuredContent: { hits: { 'src/math.js': { add: ['1: function add(a, b)'] } } },
+      })
+      return
+    case 'code_outline':
+      reply(id, {
+        content: [{ type: 'text', text: `path: ${String(args.path)}\nsymbols[1]{name,kind}:\n  add,function` }],
+        structuredContent: { path: args.path, symbols: [{ name: 'add', kind: 'function' }] },
+      })
+      return
+    case 'code_read':
+      if (typeof args.symbol !== 'string' && typeof args.line !== 'number') {
+        reply(id, {
+          content: [{ type: 'text', text: '`code_read`: neither `symbol` nor `line` was given' }],
+          structuredContent: { error: 'invalid_argument', retryable: false },
+          isError: true,
+        })
+        return
+      }
+      reply(id, {
+        content: [{ type: 'text', text: 'function add(a, b) {}' }],
+        structuredContent: { path: args.path },
+      })
+      return
+    case 'find_files':
+      reply(id, {
+        content: [{ type: 'text', text: 'files[1]: src/math.js' }],
+        structuredContent: { files: ['src/math.js'] },
+      })
+      return
+    case 'index_status':
+      reply(id, {
+        content: [{ type: 'text', text: JSON.stringify({ root: process.cwd(), schema_version: 34 }) }],
+        structuredContent: { root: process.cwd(), schema_version: 34 },
+      })
+      return
+    default:
+      fail(id, -32602, `unknown tool: ${String(name)}`)
+  }
+}
+
 const handleCall = (id, params) => {
   const name = params?.name
   const args = params?.arguments ?? {}
+  if (profile === '0.34') {
+    handleVerbCall(id, name, args)
+    return
+  }
   if (name === 'code') {
     if (args.mode === 'fail') {
       reply(id, { content: [{ type: 'text', text: 'boom from fake BaseMind' }], isError: true })

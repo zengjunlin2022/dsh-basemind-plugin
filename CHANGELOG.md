@@ -6,6 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
+### Added
+
+- The result envelope now carries MCP `structuredContent` when BaseMind sends one (`{ text, content, isError, structuredContent? }`), so the machine-readable form of a result survives the bridge. BaseMind 0.34.0 sends it for every tool and answers `code_outline`, `code_grep`, `find_files` and `git_diff` with line-oriented text or TOON instead of JSON.
+- BaseMind 0.34.0 contract fixtures (`fixtures/basemind-0.34.0-tools.json`, `fixtures/basemind-0.34.0-instructions.txt`) captured from an isolated real binary, plus schema tests that assert the 15 verb tools, the 3 agent tools, the absence of every retired name and lossless normalization of all 18 input schemas.
+- `test/integration-legacy.test.mjs`: a version-agnostic smoke test for older binaries (selected with `BASEMIND_BIN`) that asserts only the handshake, dynamic discovery, one safe read and per-root routing.
+- `BASEMIND_BIN` and `BASEMIND_REQUIRE_INTEGRATION=1` in both integration suites; with the flag set, a missing binary or an unavailable integration run fails instead of skipping.
+
+### Changed
+
+- Verified against BaseMind **0.34.0** on Windows. 0.34.0 replaced the mode-dispatch tools with 15 verb tools plus 3 agent tools and removed `graph`, `web`, `shell`, `workspace` and the `agents` tool. Discovery and registration needed no change — the plugin still registers exactly what `tools/list` advertises — but the READMEs, their examples and the integration test were rewritten for the verb surface.
+- A fixable failure now keeps its BaseMind code: an `isError` result whose `structuredContent` is `{ error, retryable }` appends `[error=<code>, retryable]` to the message, and a JSON-RPC failure appends `[jsonrpc=<code>]`.
+- The READMEs record BaseMind `0.34.0` as the verified version, describe the 15 verb tools, the `basemind://outline/{path}` and `basemind://memory/{key}` resources (`basemind://repo/map` is gone), the repository-group scope of the index and memory stores, and the `comms stop` → `scan` → reopen-session upgrade path.
+- The release workflow installs a pinned BaseMind 0.34.0 build and runs the real integration suites with `BASEMIND_REQUIRE_INTEGRATION=1`, so a release can no longer pass on a skipped integration run.
+- The version-agnostic smoke test was run against the checksum-verified BaseMind **0.33.0** Windows release and passes, which exercises the `admin { mode: "status" }` fallback that 0.34.0 no longer needs. BaseMind 0.32.0 and every non-Windows run remain unverified.
+
+### Fixed
+
+- `test/integration.test.mjs` no longer pins the nine 0.29.3 tool names and the old `mode` calls (`admin { mode: status }`, `code { mode: files }`). It polls `index_status` until `indexing` clears before the read tools run, because a fresh `BASEMIND_DATA_HOME` starts with an empty index and `index_rescan {}` exceeds the tool timeout on a cold cache. It now also covers `code_read`, an unknown-argument error and a retired tool name.
+
 ## [0.1.6] - 2026-11-10
 
 ### Changed
@@ -59,7 +80,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Initial release: a workspace-aware BaseMind MCP bridge for DeepSeek Harness. One relay per workspace root, tools discovered from `tools/list`, BaseMind's server instructions exposed as a system-prompt section, its MCP resources re-exported as the `basemind` resource server, and a `cd` inside a session switching the active workspace without a restart.
 
-[Unreleased]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/zengjunlin2022/dsh-basemind-plugin/compare/v0.1.3...v0.1.4

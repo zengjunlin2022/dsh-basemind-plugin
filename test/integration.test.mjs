@@ -6,9 +6,14 @@
  * over a `ctx.subprocess` adapter built on `node:child_process`, because DSH's
  * subprocess service does not exist in a plain `node --test` run.
  *
- * The whole file skips cleanly (never fails) when no `basemind` is on PATH.
+ * The whole file skips cleanly when no `basemind` is available, unless
+ * `BASEMIND_REQUIRE_INTEGRATION=1` is set: then a missing binary fails the suite
+ * instead of skipping it, so a release gate can never pass on a skip.
  *
- * Measured BaseMind 0.29.3 facts this file relies on:
+ * `BASEMIND_BIN` overrides the PATH lookup, which is how the compat matrix runs one
+ * specific BaseMind build (for example the 0.33 legacy smoke test).
+ *
+ * Measured BaseMind 0.34.0 facts this file relies on:
  * - On Windows `basemind` resolves to a `.cmd` launcher, so the argv is
  *   `cmd.exe /d /s /c <launcher> serve --root .` and the child runs with
  *   `cwd = workspace root`.
@@ -17,6 +22,16 @@
  *   temporary directory therefore gets the minimal marker `basemind init` writes; the
  *   command-line hatch `BASEMIND_ALLOW_ANY_ROOT=1` is not used because `serve` talks
  *   to the BaseMind daemon, which rejects such a relay with `host_build_failed`.
+ * - 0.34.0 replaced the mode-dispatch tools with 15 verb tools plus 3 agent tools;
+ *   the retired names (`code`, `git`, `memory`, `admin`, `graph`, `web`, `shell`,
+ *   `workspace`, `agents`) are not advertised and cannot be called.
+ * - A fresh `BASEMIND_DATA_HOME` starts with an empty index: the daemon starts building
+ *   it on its own, `index_status` reports `indexing: true` (about 30 s for this
+ *   repository) and the read tools fail with "the index is empty" until it clears.
+ *   `ensureIndexed()` polls `index_status`; it must not call `index_rescan {}`, which
+ *   blocks far longer than any sane tool timeout on a cold cache.
+ * - A fixable failure is an `isError` tool result whose `structuredContent` is
+ *   `{ error, retryable }`; a retired tool is a JSON-RPC `-32602` instead.
  * - `basemind serve` does not exit when its stdin closes, so teardown must terminate
  *   the launcher process tree (see `adaptChild().terminate()`).
  * - A relay reaches the machine-global daemon unless `BASEMIND_COMMS_DIR` selects a
@@ -30,7 +45,7 @@ import { spawn as spawnChild, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import test, { after, before } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { resolveConfig } from '../lib/config.js';
@@ -80,8 +95,30 @@ process.on('exit', () => {
   }
 });
 
-/** The tools BaseMind 0.29.3 advertises. */
-const TOOL_NAMES = Object.freeze([
+/** The 15 verb tools BaseMind 0.34.0 advertises. */
+const VERB_TOOLS = Object.freeze([
+  'code_grep',
+  'code_outline',
+  'code_read',
+  'code_refs',
+  'code_search',
+  'code_symbols',
+  'docs_search',
+  'find_files',
+  'git_blame',
+  'git_diff',
+  'git_log',
+  'index_rescan',
+  'index_status',
+  'memory_save',
+  'memory_search',
+]);
+
+/** The 3 agent tools a comms build adds; a build without comms may omit them. */
+const AGENT_TOOLS = Object.freeze(['agent_inbox', 'agent_post', 'agent_threads']);
+
+/** Tool names BaseMind 0.34.0 removed; they must never be advertised again. */
+const RETIRED_TOOLS = Object.freeze([
   'admin',
   'agents',
   'code',
@@ -93,11 +130,14 @@ const TOOL_NAMES = Object.freeze([
   'workspace',
 ]);
 
-/** Protocol version BaseMind 0.29.3 negotiates for the first offered version. */
+/** Protocol version BaseMind 0.34.0 negotiates for the first offered version. */
 const PROTOCOL_VERSION = '2025-06-18';
 
 /** Generous per-test budget: the first `basemind serve` may start/refresh the daemon. */
-const TEST_TIMEOUT_MS = 120_000;
+const TEST_TIMEOUT_MS = 180_000;
+
+/** How long a cold index build may take before the test fails instead of hanging. */
+const INDEX_BUILD_TIMEOUT_MS = 150_000;
 
 /** Minimal durable workspace marker BaseMind accepts (what `basemind init` writes). */
 const WORKSPACE_MARKER = '"$schema" = "v1"\n';
@@ -189,13 +229,28 @@ function findExecutable(command, env = process.env) {
   return null;
 }
 
-/** Resolved once at module load: `null` means "skip the whole suite". */
-const BASEMIND_EXE = findExecutable('basemind');
+/** `BASEMIND_BIN` wins over the PATH lookup; `null` means "no binary". */
+const CONFIGURED_BIN = (process.env.BASEMIND_BIN ?? '').trim();
+
+/** Resolved once at module load. */
+const BASEMIND_EXE = CONFIGURED_BIN === '' ? findExecutable('basemind') : findExecutable(CONFIGURED_BIN);
+
+/** When set, a missing binary fails the suite instead of skipping it. */
+const REQUIRE_INTEGRATION = (process.env.BASEMIND_REQUIRE_INTEGRATION ?? '') !== '';
 
 const TEST_OPTIONS =
-  BASEMIND_EXE === null
+  BASEMIND_EXE === null && !REQUIRE_INTEGRATION
     ? { skip: 'basemind is not installed', timeout: TEST_TIMEOUT_MS }
     : { timeout: TEST_TIMEOUT_MS };
+
+before(() => {
+  if (CONFIGURED_BIN !== '' && BASEMIND_EXE === null) {
+    assert.fail(`BASEMIND_BIN=${CONFIGURED_BIN} was not found; point it at an existing basemind binary`);
+  }
+  if (REQUIRE_INTEGRATION && BASEMIND_EXE === null) {
+    assert.fail('BASEMIND_REQUIRE_INTEGRATION=1 but no basemind binary was found (set BASEMIND_BIN or install basemind)');
+  }
+});
 
 // ---------------------------------------------------------- subprocess adapter ---
 
@@ -349,7 +404,8 @@ async function startSession(subprocess, root, { register } = {}) {
     cwd: root,
     env: launch.env,
     startupTimeoutMs: 90_000,
-    toolCallTimeoutMs: 90_000,
+    // Matches the plugin's own default (lib/config.js).
+    toolCallTimeoutMs: 120_000,
     spawn: (spec) => {
       handle = subprocess.spawn(spec);
       return handle;
@@ -379,10 +435,11 @@ async function closeQuietly(session) {
  * home. `BASEMIND_COMMS_DIR` points this command at the test daemon only.
  */
 function stopTestDaemon() {
+  if (BASEMIND_EXE === null) return;
   try {
-    if (process.platform === 'win32') {
-      // `basemind` resolves to a .cmd launcher on Windows; cmd.exe owns it.
-      spawnSync('cmd.exe', ['/d', '/s', '/c', 'basemind comms stop'], {
+    if (process.platform === 'win32' && BASEMIND_EXE.toLowerCase().endsWith('.cmd')) {
+      // A `.cmd` launcher cannot be spawned directly on Windows; cmd.exe owns it.
+      spawnSync('cmd.exe', ['/d', '/s', '/c', `"${BASEMIND_EXE}" comms stop`], {
         env: process.env,
         stdio: 'ignore',
         timeout: 15_000,
@@ -390,7 +447,7 @@ function stopTestDaemon() {
       });
       return;
     }
-    spawnSync('basemind', ['comms', 'stop'], {
+    spawnSync(BASEMIND_EXE, ['comms', 'stop'], {
       env: process.env,
       stdio: 'ignore',
       timeout: 15_000,
@@ -425,7 +482,8 @@ async function removeDirectory(directory) {
  * @returns {string}
  */
 function normalizeRoot(value) {
-  const text = String(value ?? '');
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const text = value;
   const stripped = text.startsWith('\\\\?\\') ? text.slice(4) : text;
   return path.resolve(stripped);
 }
@@ -441,6 +499,7 @@ function normalizeRoot(value) {
 function sameRoot(actual, expected) {
   const left = normalizeRoot(actual);
   const right = normalizeRoot(expected);
+  if (left === null || right === null) return false;
   return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
 
@@ -462,6 +521,61 @@ function jsonText(result, label) {
   } catch {
     assert.fail(`${label}: the text block is not JSON: ${block.text.slice(0, 200)}`);
   }
+}
+
+/**
+ * @param {{ content?: unknown }} result
+ * @returns {string} the first text content block, or `''`.
+ */
+function textOf(result) {
+  const block = Array.isArray(result?.content)
+    ? result.content.find((entry) => entry?.type === 'text' && typeof entry.text === 'string')
+    : undefined;
+  return block === undefined ? '' : block.text;
+}
+
+/**
+ * Read the JSON payload of a status-like result.
+ *
+ * 0.34.0 sends `structuredContent`; older builds only send the JSON text block.
+ *
+ * @param {{ structuredContent?: unknown, content?: unknown }} result
+ * @returns {any|undefined}
+ */
+function statusPayload(result) {
+  const structured = result?.structuredContent;
+  if (structured !== null && typeof structured === 'object' && !Array.isArray(structured)) {
+    return structured;
+  }
+  const text = textOf(result);
+  if (text === '') return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Wait until the test daemon has a usable index.
+ *
+ * A fresh `BASEMIND_DATA_HOME` starts with `indexing: true`, and every read tool
+ * answers with "the index is empty" until it clears. The daemon starts that first
+ * build on its own, and `index_status` is the documented readiness probe; polling it
+ * is cheap, while `index_rescan {}` on a cold cache blocks for minutes.
+ *
+ * @param {any} session
+ */
+async function ensureIndexed(session) {
+  let status = statusPayload(await session.callTool('index_status', {}));
+  if (status?.indexing !== true) return;
+  const deadline = Date.now() + INDEX_BUILD_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    status = statusPayload(await session.callTool('index_status', {}));
+    if (status?.indexing !== true) return;
+  }
+  assert.fail(`the BaseMind index did not finish building within ${INDEX_BUILD_TIMEOUT_MS} ms`);
 }
 
 // --------------------------------------------------------------------- tests ---
@@ -490,11 +604,16 @@ test('negotiates the MCP handshake and advertises exactly the documented tools',
   assert.ok(handshake.instructions.trim().length > 0, 'instructions is a non-empty string');
 
   const tools = await session.listTools();
-  assert.deepEqual(
-    tools.map((tool) => tool.name).sort(),
-    [...TOOL_NAMES].sort(),
-    'tools/list returns exactly the nine documented tools',
-  );
+  const names = tools.map((tool) => tool.name);
+  for (const required of VERB_TOOLS) {
+    assert.ok(names.includes(required), `0.34.0 advertises the verb tool ${required}`);
+  }
+  for (const retired of RETIRED_TOOLS) {
+    assert.equal(names.includes(retired), false, `${retired} is retired in 0.34.0`);
+  }
+  for (const name of names.filter((entry) => !VERB_TOOLS.includes(entry))) {
+    assert.ok(AGENT_TOOLS.includes(name), `${name} is not a known 0.34.0 tool`);
+  }
 
   for (const tool of tools) {
     const normalized = normalizeInputSchema(tool.inputSchema);
@@ -509,7 +628,7 @@ test('routes each session to its own workspace root', TEST_OPTIONS, async (t) =>
   /** @type {any[]} */
   const sessions = [];
   const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'basemind-int-'));
-  // BaseMind 0.29.3 refuses to serve a root that is neither a git repository nor
+  // BaseMind refuses to serve a root that is neither a git repository nor
   // marked by basemind.toml, so the temporary root gets the minimal marker.
   writeFileSync(path.join(tempRoot, 'basemind.toml'), WORKSPACE_MARKER);
 
@@ -528,12 +647,12 @@ test('routes each session to its own workspace root', TEST_OPTIONS, async (t) =>
   assert.notEqual(repoSession.handle, tempSession.handle, 'each session owns its own relay');
 
   const repoStatus = jsonText(
-    await repoSession.session.callTool('admin', { mode: 'status' }),
-    'admin status (repository root)',
+    await repoSession.session.callTool('index_status', {}),
+    'index_status (repository root)',
   );
   const tempStatus = jsonText(
-    await tempSession.session.callTool('admin', { mode: 'status' }),
-    'admin status (temporary root)',
+    await tempSession.session.callTool('index_status', {}),
+    'index_status (temporary root)',
   );
 
   assert.equal(
@@ -595,9 +714,21 @@ test('returns projectable text content for a real tool call', TEST_OPTIONS, asyn
     register: (entry) => sessions.push(entry),
   });
 
-  const result = await session.callTool('code', { mode: 'files' });
-  assert.equal(result.isError, false, 'code { mode: files } succeeds for this repository');
-  assert.ok(Array.isArray(result.content) && result.content.length > 0, 'the result carries content blocks');
+  await ensureIndexed(session);
+
+  const outline = await session.callTool('code_outline', { path: 'lib/tool-bridge.js' });
+  assert.equal(outline.isError, false, 'code_outline succeeds for this repository');
+  assert.ok(Array.isArray(outline.content) && outline.content.length > 0, 'the result carries content blocks');
+  assert.match(textOf(outline), /^path: /, 'code_outline answers with TOON text, not JSON');
+
+  const result = await session.callTool('code_grep', { pattern: 'createToolDefinition' });
+  assert.equal(result.isError, false, 'code_grep succeeds for this repository');
+  // 0.34.0 groups hits by path and then by symbol: { hits: { "<path>": { "<symbol>": ["<line>: <text>"] } } }.
+  const hits = result.structuredContent?.hits;
+  assert.equal(typeof hits, 'object', '0.34.0 sends structuredContent.hits');
+  assert.notEqual(hits, null, 'structuredContent.hits is an object, not null');
+  assert.match(JSON.stringify(hits), /createToolDefinition/, 'the structured payload carries the hit');
+  assert.match(textOf(result), /createToolDefinition/, 'the text block carries the hit');
 
   const textBlocks = result.content.filter(
     (block) => block?.type === 'text' && typeof block.text === 'string' && block.text.length > 0,
@@ -639,4 +770,69 @@ test('terminates the relay process on close', TEST_OPTIONS, async (t) => {
     'terminate() ended the relay; closing stdin alone would not be enough',
   );
   assert.notEqual(handle.exitFacts, null, 'the child reported its exit');
+});
+
+test('reads a symbol and reports a missing selector as a fixable error', TEST_OPTIONS, async (t) => {
+  const { subprocess } = createSubprocessAdapter();
+  /** @type {any[]} */
+  const sessions = [];
+  t.after(async () => {
+    for (const session of sessions) await closeQuietly(session);
+  });
+
+  const { session } = await startSession(subprocess, REPO_ROOT, {
+    register: (entry) => sessions.push(entry),
+  });
+  await ensureIndexed(session);
+
+  const hit = await session.callTool('code_read', {
+    path: 'lib/tool-bridge.js',
+    symbol: 'createToolDefinition',
+  });
+  assert.equal(hit.isError, false, 'code_read resolves a real symbol');
+  assert.ok(textOf(hit).length > 0, 'code_read returns the symbol body');
+
+  const missing = await session.callTool('code_read', { path: 'lib/tool-bridge.js' });
+  assert.equal(missing.isError, true, 'code_read without symbol or line is a fixable error');
+  assert.equal(missing.structuredContent?.error, 'invalid_argument');
+  assert.equal(missing.structuredContent?.retryable, false);
+});
+
+test('rejects an unknown argument with invalid_argument', TEST_OPTIONS, async (t) => {
+  const { subprocess } = createSubprocessAdapter();
+  /** @type {any[]} */
+  const sessions = [];
+  t.after(async () => {
+    for (const session of sessions) await closeQuietly(session);
+  });
+
+  const { session } = await startSession(subprocess, REPO_ROOT, {
+    register: (entry) => sessions.push(entry),
+  });
+
+  const result = await session.callTool('code_symbols', { name: 'createToolDefinition', bogus: 1 });
+  assert.equal(result.isError, true, 'an unknown field is rejected instead of silently dropped');
+  assert.equal(result.structuredContent?.error, 'invalid_argument');
+  assert.match(textOf(result), /bogus/, 'the message names the offending field');
+});
+
+test('retired tool names fail with JSON-RPC -32602', TEST_OPTIONS, async (t) => {
+  const { subprocess } = createSubprocessAdapter();
+  /** @type {any[]} */
+  const sessions = [];
+  t.after(async () => {
+    for (const session of sessions) await closeQuietly(session);
+  });
+
+  const { session } = await startSession(subprocess, REPO_ROOT, {
+    register: (entry) => sessions.push(entry),
+  });
+
+  await assert.rejects(
+    () => session.callTool('code', { mode: 'files' }),
+    (error) => {
+      assert.equal(error.code, -32602, 'a retired tool is a JSON-RPC invalid-params error');
+      return true;
+    },
+  );
 });

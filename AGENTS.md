@@ -67,7 +67,7 @@ DSH 插件契約優先查官方文件及目標 runtime 的實際服務介面，�
 - 工具執行時以當次 Agent 的 `ctx.workingDirectory.ensure(agent, exec.signal)` 取得目錄，再經 pool 路由；不得以 `process.cwd()` 或固定啟動目錄取代。缺少可用 Agent 時明確失敗，不能猜另一個工作區。
 - 每個解析後的工作區共用一個 `basemind serve` stdio relay；多工作階段不得互相混用 root。session 切換目錄後，下一次呼叫應使用新目錄。
 - 預設 `discoveryRoot: 'agent'`，尚無 Agent 時不為預設目錄啟動 relay；保留其他顯式 discovery 策略的既有語意。
-- `tools/list`、capabilities 與工具變更通知決定實際工具集，不硬編碼九個工具或 mode 清單，不以版本字串分支。新 relay 亦須載入自身工具清單。
+- `tools/list`、capabilities 與工具變更通知決定實際工具集，不硬編碼特定工具清單或 mode 清單，不以版本字串分支。新 relay 亦須載入自身工具清單。
 - 公開名稱沿用 `mcp__<serverName>__<rawToolName>`；保留命名檢查及 collision 處理，不覆蓋其他來源的同名工具。
 - MCP resources 經 DSH 的 `mcpResources` seam 橋接，使用呼叫者工作區。未獲需求授權不增加 MCP prompts 或其他 protocol extension。
 
@@ -75,7 +75,8 @@ DSH 插件契約優先查官方文件及目標 runtime 的實際服務介面，�
 
 - MCP 工具維持原始 `ToolDefinition` 路徑，不必為了使用 `defineTool` 而新增依賴。直接註冊不代表輸入自動受到完整驗證；維持 JSON object 邊界檢查及 server 端契約。
 - 外部 MCP schema 必須經 [lib/schema.js](./lib/schema.js) 正規化與檢查，再交給 DSH；不能直接把 `$ref`、`anyOf`、type array 或任意 JSON Schema 關鍵字塞進支援範圍有限的 DSL。
-- `execute` 回傳符合 `output.schema` 的單一 canonical JSON 值；目前 envelope 為 `{ text, content, isError: false }`。`output.render(args, value)` 從該值投影模型內容，不建立第二份業務結果。
+- `execute` 回傳符合 `output.schema` 的單一 canonical JSON 值；目前 envelope 為 `{ text, content, isError: false }`，並在 server 有送時加上可選的 `structuredContent`（BaseMind 0.34.0 起每個工具都會送；舊版可能沒有，該 key 不得出現 `undefined`）。`output.render(args, value)` 從該值投影模型內容，不建立第二份業務結果；文字可能是 TOON 或行導向格式，不得假設是 JSON 或嘗試 parse。
+- `isError` 結果的 `structuredContent` 若為 `{ error, retryable }`，錯誤訊息須保留原文並附上 `[error=<code>]`；`retryable: true` 時為 `[error=<code>, retryable]`；JSON-RPC 失敗（例如 `-32602` 已移除工具、`-32003` 升級窗口）須附上 `[jsonrpc=<code>]`。保留代碼是診斷能力，不改變 throw 型別或呼叫語意。
 - MCP 回覆的 `content` 可作為 envelope 資料，但不可直接當 DSH execute 的最外層內容塊回傳；image/audio/resource 的處理沿用明確文字診斷，不繞過 attachment admission。
 - 啟動、傳輸及 MCP `isError` 等失敗要進入錯誤路徑；保留可定位訊息，不回傳看似成功的空結果。
 - 將 `exec.signal` 向工作目錄、pool、MCP request 傳遞；維持 timeout、取消、pending request 清理及晚到回覆的邊界。
@@ -103,7 +104,10 @@ DSH 插件契約優先查官方文件及目標 runtime 的實際服務介面，�
 | 僅修改文件 | 核對內容、連結、命令及 Git 變更範圍；無須強跑產品 build 或整套測試 |
 
 - 測試使用 Node built-in runner，fake server 位於 [fixtures/fake-mcp-server.mjs](./fixtures/fake-mcp-server.mjs)。新增行為或修復缺陷時，補上對應 targeted regression case。
-- [test/integration.test.mjs](./test/integration.test.mjs) 會啟動真實 BaseMind；找不到 PATH 上的 `basemind` 時會 skip。`npm test` 成功不代表真實 integration 已執行，交付須列明 skip。
+- [test/integration.test.mjs](./test/integration.test.mjs) 綁定 0.34.0 的 15 個 verb tools（agent tools 為選配），會啟動真實 BaseMind；找不到 `basemind`／`BASEMIND_BIN` 時會 skip，設 `BASEMIND_REQUIRE_INTEGRATION=1` 則改為 fail。`npm test` 成功不代表真實 integration 已執行，交付須列明 skip。
+- [test/integration-legacy.test.mjs](./test/integration-legacy.test.mjs) 用 `BASEMIND_BIN` 跑舊版回歸 smoke：只驗 handshake、動態 discovery、一個安全 read 與 per-root 路由，不硬編碼工具數量或 `mode` 清單。目前已在 Windows 以官方 0.33.0 asset 實跑通過；0.29.3–0.32 與 macOS／Linux 未實跑，需以 `BASEMIND_BIN` 或 `compat.yml`（`basemind_version` input）補證。
+- 真實 0.34.0 的冷啟動索引是空的：daemon 會自行開始建索引，`index_status` 回 `indexing: true`（本 repo 實測約 30 s），期間讀取類工具回「index is empty」。integration 只輪詢 `index_status` 等待就緒，**不呼叫 `index_rescan {}`**（冷快取下會超過工具 timeout），也不自動改用使用者 daemon。
+- [fixtures/](./fixtures/) 的 `basemind-0.34.0-tools.json`／`basemind-0.34.0-instructions.txt` 是隔離採集的真實 `tools/list` 與 instructions，不得手寫或推測修改；0.29.3 fixture 保留作舊版回歸資產。
 - 真實 integration 將 `BASEMIND_DATA_HOME` 及 `BASEMIND_COMMS_DIR` 指向測試暫存區；保留兩者隔離與 cleanup，不改用使用者的預設 cache／daemon。
 - CI 涵蓋 Windows 與 Ubuntu、Node `24.20.0`。修改執行檔解析、stdio 或路徑處理時，需考慮兩個平台；只測一個平台就如實標明。
 - 只有涉及安裝、Cordis 註冊、生命週期或真實 runtime 契約時，才在使用者授權的測試 profile 驗證載入、工具呼叫及停用清理；不要修改現用 Desktop profile 來完成普通單元測試。
