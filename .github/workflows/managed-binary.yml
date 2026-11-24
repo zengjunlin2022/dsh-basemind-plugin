@@ -83,9 +83,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    env:
-      # One location, read by the test's diagnostics writer and by the summary step.
-      MANAGED_DIAGNOSTICS_DIR: ${{ runner.temp }}/managed-diagnostics
+    # MANAGED_DIAGNOSTICS_DIR deliberately lives on the steps that read it, not here: GitHub
+    # rejects the whole workflow file when a job-level env reads the `runner` context
+    # ("Unrecognized named-value: 'runner'"), and a rejected file never schedules a job.
     defaults:
       run:
         shell: bash
@@ -182,6 +182,8 @@ jobs:
       - name: Run the managed integration gate
         env:
           BASEMIND_REQUIRE_MANAGED_INTEGRATION: '1'
+          # One location, read by the test's diagnostics writer and by the summary step.
+          MANAGED_DIAGNOSTICS_DIR: ${{ runner.temp }}/managed-diagnostics
         run: |
           mkdir -p "$MANAGED_DIAGNOSTICS_DIR"
           node --test \
@@ -191,6 +193,8 @@ jobs:
 
       - name: Publish the measured numbers
         if: always()
+        env:
+          MANAGED_DIAGNOSTICS_DIR: ${{ runner.temp }}/managed-diagnostics
         run: |
           {
             echo
@@ -218,6 +222,8 @@ jobs:
 
       - name: Upload the failure diagnostics
         if: failure()
+        env:
+          MANAGED_DIAGNOSTICS_DIR: ${{ runner.temp }}/managed-diagnostics
         uses: actions/upload-artifact@v4
         with:
           name: managed-diagnostics-${{ matrix.os }}
