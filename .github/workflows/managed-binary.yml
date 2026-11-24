@@ -1,0 +1,230 @@
+name: Managed binary
+
+# The only workflow that proves the PLUGIN's own managed install: `test/integration-managed.test.mjs`
+# lets lib/binary/manager.js download the pinned BaseMind release, verify its published
+# SHA256, extract the complete release tree, probe it, install it into the plugin's cache
+# and then drive the real MCP relay and CLI adapter from that binary.
+#
+# Deliberately separate from the compatibility workflow: `compat.yml` unpacks an official
+# asset with the system tar/unzip and tests the MCP/CLI contract of that external binary,
+# which structurally cannot detect a broken managed install.
+#
+# Every job is a genuine cold cache: nothing here uses actions/cache, no binary is
+# unpacked by the workflow, and BASEMIND_BIN is never set. The suite itself asserts that
+# its cache directory does not exist before the install and that no external `basemind`
+# is resolvable.
+#
+# Reusable: release.yml calls it (`workflow_call`) so a release is gated on the same
+# platforms, the same commit SHA and the same pin in lib/upstream.js.
+#
+# Linux arm64 is a real opt-in, not a job-level `if` on `matrix`: GitHub does not expose
+# the `matrix` context to `jobs.<id>.if`, so such a condition would silently be true for
+# every entry. The `plan` job instead builds the matrix from the input, and the matrix is
+# only extended when a human asked for arm64.
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_linux_arm64:
+        description: Also run Linux arm64 (requires a confirmed ubuntu-24.04-arm runner)
+        type: boolean
+        default: false
+  schedule:
+    # Weekly evidence that the pinned release still installs; keeps the gate honest
+    # between releases without paying the download on every commit.
+    - cron: '0 4 * * 1'
+  workflow_call:
+    inputs:
+      include_linux_arm64:
+        description: Also run Linux arm64 (requires a confirmed ubuntu-24.04-arm runner)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: managed-binary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: plan the matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Build the platform matrix
+        id: matrix
+        env:
+          # '' on a schedule, 'true'/'false' for workflow_dispatch and workflow_call.
+          INCLUDE_ARM64: ${{ inputs.include_linux_arm64 }}
+        run: |
+          node -e "const include = [
+            { os: 'ubuntu-latest', expectedPlatform: 'linux', expectedArch: 'x86_64', expectedNodeArch: 'x64' },
+            { os: 'windows-latest', expectedPlatform: 'win32', expectedArch: 'x86_64', expectedNodeArch: 'x64' },
+            { os: 'macos-15', expectedPlatform: 'darwin', expectedArch: 'arm64', expectedNodeArch: 'arm64' },
+          ];
+          if (process.env.INCLUDE_ARM64 === 'true') {
+            include.push({ os: 'ubuntu-24.04-arm', expectedPlatform: 'linux', expectedArch: 'aarch64', expectedNodeArch: 'arm64' });
+          }
+          console.log('matrix=' + JSON.stringify({ include }));" >> "$GITHUB_OUTPUT"
+
+  managed:
+    name: managed install (${{ matrix.os }})
+    needs: [plan]
+    runs-on: ${{ matrix.os }}
+    # The cold install downloads 75-102 MB, unpacks 230-322 MB and then indexes a small
+    # fixture repository. The gate is deliberately generous (its slowest single test allows
+    # 15 minutes) so a slow runner cannot be mistaken for a hang, and so the diagnostics
+    # steps below still get to run when something really does hang.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      # One location, read by the test's diagnostics writer and by the summary step.
+      MANAGED_DIAGNOSTICS_DIR: ${{ runner.temp }}/managed-diagnostics
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.20.0
+
+      - name: Resolve the pinned BaseMind release
+        # The version, tag, asset name and expected binary all come from lib/upstream.js;
+        # nothing here may hardcode a BaseMind version.
+        run: |
+          node --input-type=module -e "import { UPSTREAM, assetFor } from './lib/upstream.js'; import { resolveTarget } from './lib/binary/platform.js'; const target = resolveTarget(); if (target.unsupported) { console.error('::error::' + target.unsupported); process.exit(1); } const asset = assetFor(target.key); console.log('version=' + UPSTREAM.version); console.log('tag=' + UPSTREAM.tag); console.log('target=' + target.key); console.log('asset=' + asset.name); console.log('binary=' + asset.binary); console.log('bytes=' + asset.bytes);" > "$RUNNER_TEMP/pin.env"
+          cat "$RUNNER_TEMP/pin.env"
+          # shellcheck disable=SC1091
+          source "$RUNNER_TEMP/pin.env"
+          {
+            echo "BM_VERSION=$version"
+            echo "BM_TAG=$tag"
+            echo "BM_TARGET=$target"
+            echo "BM_ASSET=$asset"
+            echo "BM_BINARY=$binary"
+            echo "BM_BYTES=$bytes"
+          } >> "$GITHUB_ENV"
+          echo "pinned BaseMind $version ($tag), target $target, asset $asset"
+
+      - name: Record the cold-cache starting point
+        # Runs before the architecture assertion so that a pre-test failure still leaves the
+        # expected pin, target and matrix entry in the run summary.
+        run: |
+          echo "runner temp: $RUNNER_TEMP"
+          echo "basemind on PATH: $(command -v basemind || echo none)"
+          if command -v basemind >/dev/null 2>&1; then
+            echo "::warning::this runner ships a basemind; the suite removes such directories from PATH and asserts none is resolvable"
+          fi
+          {
+            echo "### Managed binary integration"
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| platform | ${{ matrix.os }} ($BM_TARGET) |"
+            echo "| expected node platform / arch | ${{ matrix.expectedPlatform }} / ${{ matrix.expectedNodeArch }} |"
+            echo "| expected CPU | ${{ matrix.expectedArch }} |"
+            echo "| pinned BaseMind | ${BM_VERSION} (${BM_TAG}) |"
+            echo "| release asset | ${BM_ASSET} |"
+            echo "| expected binary | ${BM_BINARY} |"
+            echo "| upstream archive bytes | ${BM_BYTES:-unknown} |"
+            echo "| managed cache | cold (created by the suite) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert the runner really is the expected platform and architecture
+        # A runner label is a claim, not evidence: compare the actual CPU, the Node
+        # platform/arch pair and the release asset with the matrix entry. `expectedArch`
+        # holds the verbatim `uname -m` output for that runner; there is no normalisation
+        # layer that could disagree with it (macOS reports `arm64`, not `aarch64`).
+        run: |
+          machine="$(uname -m)"
+          node_facts="$(node -p "process.platform + ' ' + process.arch")"
+          node_platform="${node_facts% *}"
+          node_arch="${node_facts#* }"
+          echo "uname -m: $machine"
+          echo "node: $node_facts"
+          echo "asset: $BM_ASSET (target $BM_TARGET)"
+          if [ "$node_platform" != '${{ matrix.expectedPlatform }}' ]; then
+            echo "::error::expected node platform ${{ matrix.expectedPlatform }}, found $node_platform"
+            exit 1
+          fi
+          if [ "$node_arch" != '${{ matrix.expectedNodeArch }}' ]; then
+            echo "::error::expected node arch ${{ matrix.expectedNodeArch }}, found $node_arch"
+            exit 1
+          fi
+          if [ "$machine" != '${{ matrix.expectedArch }}' ]; then
+            echo "::error::expected CPU ${{ matrix.expectedArch }}, found $machine"
+            exit 1
+          fi
+          case "$node_platform" in
+            win32) target_os=windows ;;
+            *) target_os="$node_platform" ;;
+          esac
+          case "$node_arch" in
+            x64) target_arch=x64 ;;
+            arm64) target_arch=arm64 ;;
+            *) target_arch="$node_arch" ;;
+          esac
+          if [ "$BM_TARGET" != "$target_os-$target_arch" ]; then
+            echo "::error::the release target $BM_TARGET resolved from lib/upstream.js does not describe this runner ($target_os-$target_arch)"
+            exit 1
+          fi
+
+      - name: Run the managed integration gate
+        env:
+          BASEMIND_REQUIRE_MANAGED_INTEGRATION: '1'
+        run: |
+          mkdir -p "$MANAGED_DIAGNOSTICS_DIR"
+          node --test \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=spec --test-reporter-destination="$RUNNER_TEMP/test-summary.txt" \
+            test/integration-managed.test.mjs
+
+      - name: Publish the measured numbers
+        if: always()
+        run: |
+          {
+            echo
+            if [ -f "$MANAGED_DIAGNOSTICS_DIR/managed-integration.json" ]; then
+              echo "<details><summary>measured</summary>"
+              echo
+              echo '```json'
+              # The path is passed as an argument, never interpolated into JavaScript: a
+              # Windows runner temp path contains backslashes that a JS string would eat.
+              node -e "const fs = require('fs'); const d = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const pick = { metrics: d.metrics, selection: d.selection, cache: d.cacheFacts, install: d.install ? { layout: d.install.layout, fileCount: d.install.files ? d.install.files.length : undefined, sha256: d.install.sha256, binarySha256: d.install.binarySha256 } : undefined }; console.log(JSON.stringify(pick, null, 2));" "$MANAGED_DIAGNOSTICS_DIR/managed-integration.json"
+              echo '```'
+              echo
+              echo "</details>"
+            else
+              echo "No diagnostics file was written; the gate failed before the suite ran."
+            fi
+            echo "<details><summary>test summary (tail)</summary>"
+            echo
+            echo '```'
+            tail -n 40 "$RUNNER_TEMP/test-summary.txt" 2>/dev/null || echo '(no summary)'
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: managed-diagnostics-${{ matrix.os }}
+          # Small text only: the diagnostics JSON and the test summary. Never the binary
+          # cache, never environment variables, never credentials.
+          path: |
+            ${{ env.MANAGED_DIAGNOSTICS_DIR }}
+            ${{ runner.temp }}/test-summary.txt
+          if-no-files-found: ignore
+          retention-days: 7

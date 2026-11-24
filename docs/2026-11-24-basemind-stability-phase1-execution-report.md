@@ -1,4 +1,6 @@
-# dsh-basemind-plugin 0.3.0 — Phase 1（P0 穩定性）Execution Report
+# dsh-basemind-plugin — Phase 1（P0 穩定性）Execution Report
+
+> 版本狀態（2026-11-24 人工裁決）：`package.json` 為 **0.2.0**，目標發布版本與正式發佈版本均為 0.2.0（目前仍為開發版本，尚未正式發佈）。本報告原標題中的「0.3.0」已更正。
 
 - 日期：2026-11-24
 - 角色：Execution（依 [AGENTS.md](../AGENTS.md) §3.4；授權來源：使用者確認 [Plan](./2026-11-24-basemind-stability-feature-parity-plan.md) 附錄 B 全部建議）
@@ -174,6 +176,8 @@ M  fixtures/fake-basemind.sh          (僅模式 100644 → 100755，內容 0 �
 | 真實「只改 mtime、內容不變」 | 換一個 manager（`fetchImpl` 直接拋錯）→ **重用成功**、`hashes = 1`、**0 次網路**、398 ms、`basemind 0.34.0`。修復前此情境會判定 mismatch、刪掉整棵樹並重下 75 MB |
 | 快取重用（第二次 select） | 39 ms、0 網路（先前 e2e 結果維持） |
 
-**接受殘留**：若「成功 swap 後刪除 `.old-*`」失敗，該目錄會留到**下一次安裝**才由 `recoverParkedTrees()` 清掉（已提升為 `warn` 且 `/basemind-status` 可見）。不在每次 `select()` 掃描，以免把診斷成本放進熱路徑。
+**接受殘留**：若「成功 swap 後刪除 `.old-*`」失敗，該目錄會留到下一次選型（`runSelection()` 起點）或下一次安裝（鎖內）才由 `recoverParkedTrees()` 處理。不在每次 `select()` 掃描，以免把診斷成本放進熱路徑。
+
+> **勘誤（2026-11-24，Phase 2 補正）**：上一版此段寫「留到下一次**安裝**才清掉」，實際是**下一次選型**就會執行 `recoverParkedTrees()`；同句「status 可見」只在 target 缺失時成立（`parkedTree` 僅在 `present === false` 時計算）。程式行為正確，屬描述偏差。另外 Phase 2 已把清除條件收緊為「target 本身是完整 layout-2 安裝」才刪除 `.old-*`，詳見 [Phase 2 Execution Report](./2026-11-24-basemind-stability-phase2-execution-report.md) §14。
 
 **仍未驗證**：與 §6 相同（POSIX 實跑、Ubuntu CI、真實 Linux/macOS 整包安裝、Windows 真實檔案佔用下的 restore）。

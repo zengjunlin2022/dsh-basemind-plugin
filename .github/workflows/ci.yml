@@ -35,7 +35,24 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: Run tests
-        run: npm test
+        # `npm test` stays the single source of truth for how the suite runs; the extra
+        # reporters only add a plain-text summary, so a red run can be diagnosed from a
+        # downloaded artifact even when the job log is unavailable.
+        shell: bash
+        run: |
+          mkdir -p _ci
+          npm test -- \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=spec --test-reporter-destination=_ci/test-summary.txt
+
+      - name: Upload the failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary-${{ matrix.os }}
+          path: _ci/test-summary.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Check the bundle
         run: npm run check

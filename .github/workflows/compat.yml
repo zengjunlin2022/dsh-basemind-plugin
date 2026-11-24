@@ -6,6 +6,11 @@ name: BaseMind compatibility
 # BASEMIND_REQUIRE_INTEGRATION=1 and fails when the download or the run does not
 # happen.
 #
+# Scope: this workflow unpacks an official asset with the system tar/unzip and tests the
+# MCP/CLI CONTRACT of that externally installed binary. It structurally cannot detect a
+# broken managed install — that is `managed-binary.yml`, which lets the plugin download,
+# verify, extract and install the release itself. Keep the two apart when reading results.
+#
 # `basemind_version` lets a maintainer point the version-agnostic suite at an older
 # build (for example 0.33.0). The verb-tool contract suite runs whenever the tested
 # build is the pinned one: the Resolve step exports the pin from lib/upstream.js as
@@ -20,6 +25,10 @@ on:
         description: BaseMind release to test (empty = the version pinned in lib/upstream.js)
         required: false
         default: ''
+  schedule:
+    # Weekly contract evidence between releases, in the background: a red scheduled run
+    # surfaces in the Actions tab without blocking a per-commit CI run.
+    - cron: '0 5 * * 1'
 
 permissions:
   contents: read
@@ -37,6 +46,12 @@ jobs:
             asset: basemind-x86_64-unknown-linux-gnu.tar.gz
             binary: basemind
             arch: x86_64
+          # Linux arm64 is NOT in this matrix on purpose. A GitHub-hosted runner label
+          # that cannot be scheduled leaves the job queued indefinitely (the job timeout
+          # only starts once it runs), and this repository cannot confirm the
+          # `ubuntu-24.04-arm` label from CI. When a maintainer has confirmed it for this
+          # repository, run the arm64 evidence through the managed workflow's opt-in
+          # `include_linux_arm64` input instead of adding an unconditional matrix row here.
           # macOS runners are arm64, and the aarch64 asset is the only macOS build
           # BaseMind publishes.
           - os: macos-15

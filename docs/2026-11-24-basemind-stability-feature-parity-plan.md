@@ -11,6 +11,10 @@
 
 ---
 
+> **版本更正（人工裁決，2026-11-24）**：目標發布版本與正式發佈版本均為 **0.2.0**（`package.json` 現值，目前仍為開發版本、尚未正式發佈）。本文各處出現的「0.3.0」（含 §1.3 建議版本、§25 版本表與標題）屬規劃當時的建議，一律以本裁決為準；本次不 bump 版本、不建 tag、不發布。Phase 2 的報告與驗收清單已改用 0.2.0。
+
+---
+
 ## 0. 閱讀指引
 
 本文件依需求 §23 的 26 項交付要求組織，但**先講三個必須先知道的事實**，其餘細節再展開：
@@ -1306,5 +1310,48 @@ OpenCode 在 **`session.created` 與每一次 `session.tool.success`** 都 spawn
 ---
 
 **本文件完成即停止。未經人工確認不進入 Execution，不修改產品程式碼，不執行 git add／commit／push／tag／npm publish。**
+
+---
+
+## 附錄 C：Phase 2 執行狀態（2026-11-24，Execution 回填）
+
+本附錄只記錄「Plan 與實作現況的落差」，Plan 主體（§1–§22）不改寫。完整證據見 [Phase 2 Execution Report](./2026-11-24-basemind-stability-phase2-execution-report.md)。
+
+### C.1 已完成
+
+| Plan 章節 | 狀態 |
+| --- | --- |
+| §10 真實 Managed Binary Integration Test＋Gate（`BASEMIND_REQUIRE_MANAGED_INTEGRATION`） | 完成；Windows x64 實跑 10/10 pass |
+| §11.1 L3 `managed-binary.yml`（冷快取、三平台、Linux arm64 opt-in、失敗診斷） | 完成（workflow 已建立，**遠端未執行**） |
+| §11.3 `compat.yml` 加排程與 arm64、並註明「測不到 managed 安裝」 | 完成 |
+| §11.4 `ci.yml` 失敗摘要 artifact | 完成 |
+| §11.5 Release Gate（`release.yml` 前置 managed gate） | 完成（未觸發） |
+| §12 Desktop 驗收 | **部分**：D1 與 D2 組裝層完成；D3–D15 交付 [人工驗收清單](./2026-11-24-basemind-desktop-acceptance-checklist.md)，尚未執行 |
+| §22 非阻擋 Minor（`valid` 與 `isLayout2` 不一致、parked tree 先刪後驗） | 已做最小修復＋3 條新測試 |
+
+### C.2 明確 Deferred（本輪不做，且不作為 0.2.0 發布阻擋）
+
+| Plan 章節 | 項目 | 理由 |
+| --- | --- | --- |
+| §15 | 官方 `/bm`、`/bm-init`、`/bm-scan`、`/bm-doctor`、`/bm-stats`、`/bm-statusline` 快捷命令 | 使用者裁決本輪暫停；保留 CLI Adapter 與 10 個 Skills |
+| §16 | Binary／下載狀態原生通知 | DSH 目前沒有適合的原生 Toast API |
+| §17 | Agent Inbox 通知、Agent Identity 自動綁定 | 與 DSH 原生機制重疊，暫停 |
+
+既有能力（`/basemind-status`、logger、10 skills、MCP tools／resources、CLI Adapter、bootstrap、workspace pool、binary manager）在 Phase 2 全部保留且有回歸測試。
+
+### C.3 與 Plan 的實作偏差（已記錄於 Execution Report §18）
+
+1. 未新增 `BASEMIND_RELEASE_BASE_URL`；修復場景改用同一輪真實下載的官方 bytes 重放（產品仍做真實校驗／解壓／安裝）。
+2. 「三平台 managed 冷快取通過」目前只有 Windows x64 本機證據；Linux x64／macOS arm64／Linux arm64 皆為 NOT RUN。
+3. Desktop 驗收未在 Desktop app 內執行（會動生產 profile、且需模型額度授權）；改以獨立 `DSH_HOME` 的 shipped web 模板 profile 驗證 profile 組裝層。
+
+### C.4 仍未驗證（不得寫成通過）
+
+- `managed-binary.yml`／`compat.yml`／`ci.yml`／`release.yml` 的遠端 GitHub Actions 結果。
+- Ubuntu 本機分支（POSIX 權限、`index.test.mjs` 的 POSIX preflight）。
+- macOS arm64 與 Linux x64 的真實 managed 安裝（含 `lib/*.so`、`RUNPATH`、`*.dylib` 布局）。
+- DSH Desktop D3–D15（含 skills catalog／正文載入、多 session 隔離、worktree、生命周期清理）。
+- `code_search` 語意搜尋、`docs_search` 文件管線、OCR／HEIF 影像解析的實際功能（需額外模型／資源）。
+
 
 

@@ -14,8 +14,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Release gate: the plugin's own managed download/verify/extract/install path must work
+  # on Windows, Linux and macOS for THIS commit before anything is published. It runs as a
+  # reusable workflow instead of a second copy of the same steps, so a tag is validated by
+  # exactly the platforms and the same lib/upstream.js pin as `managed-binary.yml`. A local
+  # `uses:` always checks out the caller's commit, so the gate cannot report an older SHA.
+  # Linux arm64 stays out of the default gate: it is the managed workflow's
+  # `include_linux_arm64` input (default false), so this repository never blocks a release
+  # on a runner label it has not confirmed.
+  managed-gate:
+    name: managed binary gate
+    uses: ./.github/workflows/managed-binary.yml
+    permissions:
+      contents: read
+
   release:
     name: release ${{ github.ref_name }}
+    needs: [managed-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:

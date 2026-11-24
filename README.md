@@ -38,7 +38,7 @@ Release notes are in [CHANGELOG.md](CHANGELOG.md).
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`, declared in `engines.dsh` and enforced by DSH at install and startup. This version is verified on `0.2.1-rc.5`. |
 | Node.js | `>= 24.20.0` (declared in `engines` and pinned with Volta). The plugin is plain ESM with no dependencies. |
-| BaseMind | **0.34.0**, pinned in `lib/upstream.js` and enforced by `binaryPolicy: 'exact'` (the default, §8): a local `basemind` whose major.minor.patch differs is reported in the log and `/basemind-status`, then skipped instead of used, and when no compatible local binary is found, `binaryDownload: true` (the default, §7) installs that pinned release from GitHub. `binaryPolicy: 'minor'` and `'any'` are escape hatches; `'any'` keeps only the MCP bridge and disables skills, the CLI tool and the version notice. Verified on Windows with BaseMind **0.34.0**; Linux and macOS runs are CI-pending in `.github/workflows/compat.yml`. Older releases (0.29.3–0.33.0) expose the mode-based tools instead of the verb tools (see §5.2). |
+| BaseMind | **0.34.0**, pinned in `lib/upstream.js` and enforced by `binaryPolicy: 'exact'` (the default, §8): a local `basemind` whose major.minor.patch differs is reported in the log and `/basemind-status`, then skipped instead of used, and when no compatible local binary is found, `binaryDownload: true` (the default, §7) installs that pinned release from GitHub. `binaryPolicy: 'minor'` and `'any'` are escape hatches; `'any'` keeps only the MCP bridge and disables skills, the CLI tool and the version notice. Verified with a real external binary on Windows; the plugin's own managed download/install path is verified on **Windows x64** (`BASEMIND_REQUIRE_MANAGED_INTEGRATION=1`, 2026-11-24). The Linux x64 and macOS arm64 managed runs are defined in `.github/workflows/managed-binary.yml` but **have not been run yet** — see §15. Older releases (0.29.3–0.33.0) expose the mode-based tools instead of the verb tools (see §5.2). |
 
 ## 4. Install
 
@@ -238,6 +238,28 @@ One short prompt section covers only what BaseMind's own MCP instructions do not
 ## 14. Syncing the next BaseMind release
 
 `lib/upstream.js` is the only place the pinned version lives. The upgrade checklist (sync skills, capture fixtures, run the gates) is in [docs/upstream-sync.md](docs/upstream-sync.md).
+
+## 15. What has been verified
+
+Three separate gates. They are deliberately **not** interchangeable — passing one says nothing about the others.
+
+| Gate | Command | What it proves | Configured in | Run for this change set |
+| --- | --- | --- | --- | --- |
+| Local/unit | `npm test` | Everything that does not need a real BaseMind as a subject. The two real suites run only when a compatible BaseMind is on `PATH` or in `BASEMIND_BIN`; otherwise they skip. | `ci.yml` | Windows x64, locally: 432 tests, 422 pass, 10 skipped (the gated managed suite) |
+| External binary contract | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | The MCP/CLI contract of a BaseMind build installed **outside** the plugin and unpacked with the system `tar`/`unzip` (`compat.yml`). Structurally cannot detect a broken managed install. | `compat.yml` (Ubuntu x64, macOS arm64, Windows x64) | **NOT RUN** (no GitHub Actions access; the two suites did run locally against a real 0.34.0 inside `npm test`) |
+| Managed install | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | The plugin's **own** path: real download of the pinned asset, published-SHA256 verification, complete tree extraction, layout-2 install record, real `basemind --version`, real MCP relay tools/resources and real CLI verbs from that managed binary (`managed-binary.yml`). | `managed-binary.yml` (Windows x64, Linux x64, macOS arm64; Linux arm64 only via the `include_linux_arm64` input) | **Windows x64: passed twice on 2026-11-24** (cold install 13.5–55.7 s, network-dependent; warm selection 57–77 ms, 0 network). Linux x64 / macOS arm64 / Linux arm64: **NOT RUN** |
+
+Details of the gate contract:
+
+- `npm test` never downloads the release: without `BASEMIND_REQUIRE_MANAGED_INTEGRATION` the managed suite skips with a message that names the variable.
+- With the gate set, a missing or unreachable release, a checksum mismatch, an incomplete install, a relay that does not start, or a tool that does not answer **fails** the run. It never degrades to a skip.
+- The suite asserts that no `basemind` is resolvable on `PATH` and removes every `PATH` entry carrying BaseMind's private runtime libraries, so a global Windows install's DLLs cannot make an incomplete managed tree look usable.
+- `DSH_BASEMIND_MANAGED_TEST_KEEP=1` keeps the throwaway root; `MANAGED_DIAGNOSTICS_DIR=<dir>` writes one small diagnostics JSON (selection, cache facts, install record, timings) for CI artifacts.
+- `test/workflows.test.mjs` (part of `npm test`) statically guards the CI contract: no job-level `if` on `matrix`, verbatim `uname -m` architecture values, no fake-green switches, no hardcoded BaseMind version, and the release gate wired to this same workflow.
+
+The managed path supports exactly the targets in `lib/upstream.js`: `windows-x64`, `linux-x64`, `linux-arm64`, `darwin-arm64`. Upstream publishes no macOS x64 or Windows arm64 asset, so those are **not** supported by the managed path. Linux arm64 is not scheduled by default anywhere, because this repository cannot confirm the `ubuntu-24.04-arm` runner label; a maintainer opts in explicitly.
+
+DSH Desktop acceptance (D1–D15) is a separate manual checklist: [docs/2026-11-24-basemind-desktop-acceptance-checklist.md](docs/2026-11-24-basemind-desktop-acceptance-checklist.md). Only the packaging step (D1) and the profile-composition part of D2 have been verified so far; the GUI items are not verified.
 
 ---
 

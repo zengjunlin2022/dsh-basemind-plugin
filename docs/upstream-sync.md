@@ -35,8 +35,19 @@
    BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs
    ```
 
-6. **更新文件**
-   - README（兩語言）的「已驗證版本」與 asset 說明。
+6. **重取 managed 安裝證據（pin 一改就失效）**
+
+   ```bash
+   BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs
+   ```
+
+   - 這條 gate 驗的是「插件自己下載、校驗、解壓、安裝、啟動」的完整路徑；`BASEMIND_REQUIRE_INTEGRATION` 只驗外部已安裝 binary 的契約，兩者不可互相代替。
+   - 它會真的下載新 pin 的 asset（75–102 MB）。未設變數時該檔會 skip，`npm test` 不會下載。
+   - 本機綠只代表本機平台；**跨平台證據**要跑 [`.github/workflows/managed-binary.yml`](../.github/workflows/managed-binary.yml)（`workflow_dispatch`），並把 run 結果補進當次的 Execution Report。release 的 `managed-gate` job 會重用同一個 workflow。
+   - 若上游改名 asset、改 triple 或新增平台，先更新 `lib/upstream.js` 的 `assets`，workflow 會自動用新的 target／asset 名稱（不要在 workflow 或測試裡另寫版本或檔名）。
+
+7. **更新文件**
+   - README（兩語言）的「已驗證版本」與 asset 說明；§15「已驗證範圍」的平台矩陣要跟著實測結果更新。
    - CHANGELOG 的 `[Unreleased]` 或既有版本段落。
 
 ## 不要在升版時做的事

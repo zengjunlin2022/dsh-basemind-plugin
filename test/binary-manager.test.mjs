@@ -547,6 +547,77 @@ test('a layout-2 record without a binary digest is treated as incomplete', async
   assert.equal(install.binarySha256, DIGEST, 'the new record carries the binary digest');
 });
 
+test('a cache record without a binary digest is not reported as valid by status()', async (t) => {
+  // The status snapshot must apply the same completeness contract as the selection; a
+  // record without `binarySha256` cannot prove its contents, so calling it valid would
+  // promise a cache hit that the next start re-downloads.
+  const h = await setup(t, { config: { binaryDownload: false } });
+  await seedCache(h.targetDir, h.binaryName, { binarySha256: undefined });
+
+  const status = h.manager.status();
+  assert.equal(status.cache.present, true, 'the binary itself is on disk');
+  assert.equal(status.cache.layout, 2, 'the snapshot reports the layout it found');
+  assert.equal(status.cache.valid, false, 'a record without a binary digest is not a valid cache');
+
+  const selection = await h.manager.select();
+  assert.equal(selection.ok, false, 'the selection refuses the same cache');
+  assert.equal(h.calls.download.length, 0, 'nothing was downloaded while downloads are disabled');
+});
+
+test('an intact parked tree is kept while the surviving cache is incomplete', async (t) => {
+  // Deleting the parked tree first and validating the target afterwards can destroy the
+  // only intact backup of a cache that a crash interrupted.
+  const h = await setup(t, { config: { binaryDownload: false } });
+  await seedCache(h.targetDir, h.binaryName, {}, { 'lib/libheif.so.1': 'fake shared object' });
+  await rm(path.join(h.targetDir, 'lib', 'libheif.so.1'));
+  const parked = path.join(path.dirname(h.targetDir), '.old-linux-x64-backup');
+  await seedCache(parked, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, false, 'the disabled download cannot salvage the incomplete target');
+  assert.equal(existsSync(path.join(parked, h.binaryName)), true, 'the intact parked backup survives');
+  assert.ok(
+    h.logger.warnings.some((warning) => warning.includes('not a complete install') && warning.includes('parked tree')),
+    'the diagnostics explain why the backup was kept',
+  );
+});
+
+test('a parked tree is removed once the target is a complete install', async (t) => {
+  const h = await setup(t, { config: { binaryDownload: false } });
+  await seedCache(h.targetDir, h.binaryName);
+  const parked = path.join(path.dirname(h.targetDir), '.old-linux-x64-superseded');
+  await seedCache(parked, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true, selection.reason);
+  assert.equal(
+    (await readdir(path.dirname(h.targetDir))).filter((name) => name.startsWith('.old-')).length,
+    0,
+    'a superseded parked tree is reclaimed only when the target is complete',
+  );
+});
+
+test('a successful install reclaims a superseded parked tree in the same run', async (t) => {
+  // Without the post-swap reclaim, the older parked tree would survive until the next
+  // selection, holding another 230-322 MB.
+  const h = await setup(t, { config: { binaryDownload: true } });
+  const parked = path.join(path.dirname(h.targetDir), '.old-linux-x64-older');
+  await seedCache(parked, h.binaryName);
+  await seedLayout1Cache(h.targetDir, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true, selection.reason);
+  assert.equal(h.calls.download.length, 1, 'the incomplete target was replaced');
+  assert.deepEqual(
+    (await readdir(path.dirname(h.targetDir))).filter((name) => name.startsWith('.old-')),
+    [],
+    'both the replaced target and the older parked tree are reclaimed in this run',
+  );
+});
+
 test('a layout-2 cache with a missing lib file is detected and re-downloaded', async (t) => {
   const h = await setup(t, { config: { binaryDownload: true } });
   await seedCache(h.targetDir, h.binaryName, {}, { 'lib/libheif.so.1': 'fake shared object' });
