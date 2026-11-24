@@ -604,6 +604,73 @@ test('binaryPolicy any keeps the MCP bridge but exposes no CLI, skills or verifi
   assert.doesNotMatch(text, /mcp__basemind__cli/)
 })
 
+/**
+ * Record every relay this context spawns, in order, so a test can kill a specific one.
+ * The version probe is spawned with `command --version`; only the relay carries the
+ * scripted MCP server path in its argv.
+ * @param {object} ctx
+ * @returns {Array<{ terminate: () => void, done: Promise<unknown> }>}
+ */
+function trackRelays(ctx) {
+  const relays = []
+  const spawn = ctx.subprocess.spawn
+  ctx.subprocess.spawn = (spec) => {
+    const handle = spawn(spec)
+    if (Array.isArray(spec.argv) && spec.argv.some((part) => String(part).endsWith('fake-mcp-server.mjs'))) {
+      relays.push(handle)
+    }
+    return handle
+  }
+  return relays
+}
+
+test('a relay that closed on its own is replaced on the next call (F1)', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  const relays = trackRelays(ctx)
+  apply(ctx, fakeSettings())
+
+  await waitFor(() => ctx.tools.get('mcp__basemind__admin') !== undefined, { label: 'tools to register' })
+  assert.equal(relays.length, 1, 'one relay serves the workspace')
+  const toolsBefore = ctx.tools.schemas().length
+
+  const first = await call(ctx, 'mcp__basemind__admin', { mode: 'status' })
+  assert.equal(JSON.parse(first.text).root, ROOT_A)
+
+  // An unexpected exit: the pool used to keep the dead session, so every later call
+  // failed until the whole harness was restarted.
+  relays[0].terminate()
+  await waitFor(() => ctx.warnings.some((line) => /relay for .* closed:/.test(line)), {
+    label: 'the unexpected close to be observed',
+  })
+
+  const second = await call(ctx, 'mcp__basemind__admin', { mode: 'status' })
+  assert.equal(JSON.parse(second.text).root, ROOT_A, 'the recovered relay serves the same root')
+  assert.equal(relays.length, 2, 'the next call built exactly one replacement relay')
+  assert.equal(ctx.tools.schemas().length, toolsBefore, 'the tool registry was not duplicated by the recovery')
+})
+
+test('two consecutive relay closures still recover (F1)', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  const relays = trackRelays(ctx)
+  apply(ctx, fakeSettings())
+
+  await waitFor(() => ctx.tools.get('mcp__basemind__admin') !== undefined, { label: 'tools to register' })
+
+  for (const round of [1, 2]) {
+    const relay = relays.at(-1)
+    assert.ok(relay, `round ${String(round)}: a relay is running`)
+    relay.terminate()
+    await waitFor(() => ctx.warnings.filter((line) => /relay for .* closed:/.test(line)).length >= round, {
+      label: `round ${String(round)}: the unexpected close to be observed`,
+    })
+    const result = await call(ctx, 'mcp__basemind__admin', { mode: 'status' })
+    assert.equal(JSON.parse(result.text).root, ROOT_A, `round ${String(round)}: the call succeeds on a fresh relay`)
+  }
+  assert.equal(relays.length, 3, 'one relay per closure plus the original')
+})
+
 test('failOnStartupError surfaces an unresolvable launcher from apply', async () => {
   const ctx = createFakeContext({ launchable: false })
   ctx.effect = (callback) => callback()

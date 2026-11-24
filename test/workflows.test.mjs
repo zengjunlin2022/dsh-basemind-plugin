@@ -124,6 +124,40 @@ test('every managed matrix entry uses the verbatim uname architecture and a know
   );
 });
 
+test('no job-level env reads the runner context', () => {
+  // GitHub validates the workflow file before it schedules anything, and the `runner`
+  // context is not available in `jobs.<id>.env`. A file that reads it is rejected as a
+  // whole ("Unrecognized named-value: 'runner'"), so the run never starts and no other
+  // check in this file ever gets the chance to run either.
+  for (const name of WORKFLOWS) {
+    const lines = workflow(name).split('\n');
+    lines.forEach((line, index) => {
+      if (!/^ {4}env:$/.test(line)) return;
+      for (let i = index + 1; i < lines.length; i += 1) {
+        const inner = lines[i];
+        if (inner.trim() === '' || /^ {6}#/.test(inner)) continue;
+        if (!/^ {6}/.test(inner)) break;
+        assert.doesNotMatch(
+          inner,
+          /\$\{\{\s*runner\./,
+          `${name} line ${i + 1}: jobs.<id>.env cannot read the runner context; move it to a step env`,
+        );
+      }
+    });
+  }
+});
+
+test('the managed workflow still hands the diagnostics directory to the gate and its summary', () => {
+  const text = workflow('managed-binary.yml');
+  assert.equal(
+    (text.match(/MANAGED_DIAGNOSTICS_DIR: \$\{\{ runner\.temp \}\}\/managed-diagnostics/g) ?? []).length,
+    3,
+    'the gate, the step summary and the failure artifact each get the directory from a step env',
+  );
+  assert.match(text, /\$\{\{ env\.MANAGED_DIAGNOSTICS_DIR \}\}/, 'the failure artifact still reads the directory');
+  assert.match(text, /mkdir -p "\$MANAGED_DIAGNOSTICS_DIR"/, 'the gate still creates the directory before the suite runs');
+});
+
 test('the managed workflow has no path that turns a failure into a pass', () => {
   const text = workflow('managed-binary.yml');
   assert.doesNotMatch(text, /continue-on-error/, 'no step may be allowed to fail silently');

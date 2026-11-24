@@ -173,6 +173,12 @@ export function apply(ctx, config) {
       onClose: (error) => {
         if (error === undefined) return
         const tail = settings.logStderr ? ` (stderr tail: ${client.stderrTail.slice(-2048)})` : ''
+        // A relay that ended on its own can never serve another call. Forget the pool
+        // entry (without trying to close the corpse) so the next call builds a fresh
+        // relay for this workspace, and stop the dead primary session from being read
+        // by the next tool-list re-sync. Deliberate closes pass `undefined` above.
+        pool.forget(root)
+        if (state.primaryRoot === root) state.primarySession = undefined
         logger?.warn?.(`[dsh-basemind-plugin] relay for ${root} closed: ${message(error)}${tail}`)
       },
     })
