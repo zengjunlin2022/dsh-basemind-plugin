@@ -322,6 +322,117 @@ test('the top-level manager snapshot shape is accepted as a fallback', async () 
   assert.ok(text.includes('/opt/basemind'))
 })
 
+test('a complete layout-2 cache renders the layout, file count and binary presence', async () => {
+  const report = await statusReport({
+    manager: manager({
+      platform: 'windows-x64',
+      selection: { source: 'managed', path: 'C:/cache/managed-binaries/basemind.exe', version: '0.34.0', compatible: true },
+      cache: {
+        root: 'C:/cache/managed-binaries',
+        target: 'windows-x64',
+        present: true,
+        valid: true,
+        layout: 2,
+        fileCount: 14,
+      },
+    }),
+    config: CONFIG,
+    platform: PLATFORM,
+  })
+
+  const text = renderStatus(report)
+  assert.ok(text.includes('2 (14 files)'), text)
+  assert.match(text, /cache binary\s+: present/)
+  assert.equal(text.includes('incomplete'), false)
+  assert.equal(text.includes('re-download required'), false)
+})
+
+test('an incomplete layout-2 cache names the first missing file', async () => {
+  const report = await statusReport({
+    manager: manager({
+      platform: 'windows-x64',
+      selection: { source: 'managed', path: 'C:/cache/managed-binaries/basemind.exe', version: '0.34.0', compatible: true },
+      cache: {
+        root: 'C:/cache/managed-binaries',
+        target: 'windows-x64',
+        present: true,
+        valid: false,
+        layout: 2,
+        fileCount: 14,
+        missingFile: 'lib/libheif.so.1',
+      },
+    }),
+    config: CONFIG,
+    platform: PLATFORM,
+  })
+
+  const text = renderStatus(report)
+  assert.ok(text.includes('incomplete'), text)
+  assert.match(text, /cache missing\s+: lib\/libheif\.so\.1/)
+  assert.match(text, /cache binary\s+: present/)
+  assert.equal(text.includes('invalid'), true)
+  for (const line of report.lines) assert.ok(line.length <= 100, 'line too wide: ' + line)
+})
+
+test('a layout-1 cache says the next start must re-download it', async () => {
+  const report = await statusReport({
+    manager: manager({
+      platform: 'windows-x64',
+      selection: { source: 'managed', path: 'C:/cache/managed-binaries/basemind.exe', version: '0.34.0', compatible: true },
+      cache: { root: 'C:/cache/managed-binaries', target: 'windows-x64', present: true, valid: false, layout: 1 },
+    }),
+    config: CONFIG,
+    platform: PLATFORM,
+  })
+
+  const text = renderStatus(report)
+  assert.ok(text.includes('1 - re-download required'), text)
+})
+
+test('a missing main binary is rendered even when the record exists', async () => {
+  const report = await statusReport({
+    manager: manager({
+      platform: 'windows-x64',
+      cache: {
+        root: 'C:/cache/managed-binaries',
+        target: 'windows-x64',
+        present: false,
+        valid: false,
+        layout: 2,
+        fileCount: 14,
+        missingFile: 'basemind.exe',
+      },
+    }),
+    config: CONFIG,
+    platform: PLATFORM,
+  })
+
+  const text = renderStatus(report)
+  assert.ok(text.includes('empty (C:/cache/managed-binaries)'), text)
+  assert.match(text, /cache binary\s+: missing/)
+  assert.match(text, /cache missing\s+: basemind\.exe/)
+})
+
+test('a parked tree from an interrupted swap is named and promised to be restored', async () => {
+  const report = await statusReport({
+    manager: manager({
+      platform: 'linux-x64',
+      cache: {
+        root: '/home/user/.dsh/cache/managed-binaries',
+        target: 'linux-x64',
+        present: false,
+        valid: false,
+        parkedTree: '.old-linux-x64-abc123',
+      },
+    }),
+    config: CONFIG,
+    platform: 'linux',
+  })
+
+  const text = renderStatus(report)
+  assert.match(text, /cache parked\s+: \.old-linux-x64-abc123 - restored on the next selection/)
+})
+
 test('rendering is deterministic, ANSI-free and at most 100 columns per line', async () => {
   const longPath = 'C:/' + 'very-long-directory-name/'.repeat(8) + 'basemind.exe'
   const report = await statusReport({

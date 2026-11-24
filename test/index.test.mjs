@@ -21,22 +21,25 @@ const FIXTURES = path.join(here, '..', 'fixtures')
 const FAKE_SERVER = path.join(FIXTURES, 'fake-mcp-server.mjs')
 const FAKE_BASEMIND = path.join(FIXTURES, process.platform === 'win32' ? 'fake-basemind.cmd' : 'fake-basemind.sh')
 
+// The POSIX launcher resolves its sibling modules from its own directory, so a
+// copy in os.tmpdir() would start `--version` but fail `serve` with
+// MODULE_NOT_FOUND. It is executed in place instead, which requires the git exec
+// bit (100755). Fail here in milliseconds rather than in three 15 s waits.
+if (process.platform !== 'win32') {
+  assert.ok(
+    (fs.statSync(FAKE_BASEMIND).mode & 0o111) !== 0,
+    'fixtures/fake-basemind.sh must be executable in git (mode 100755); ' +
+      'restore it with: git update-index --chmod=+x fixtures/fake-basemind.sh && chmod +x fixtures/fake-basemind.sh',
+  )
+}
+
 /**
  * Path to the fake BaseMind launcher that actually runs here: Windows uses the
- * .cmd wrapper, POSIX copies the shell launcher to a temp dir and marks it
- * executable (the repository does not carry an exec bit).
+ * .cmd wrapper, POSIX runs the checked-in shell launcher in place.
  * @returns {string}
  */
-let fakeBasemindPath
 function fakeBasemind() {
-  if (process.platform === 'win32') return FAKE_BASEMIND
-  if (fakeBasemindPath !== undefined) return fakeBasemindPath
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-basemind-'))
-  const copy = path.join(directory, 'fake-basemind.sh')
-  fs.copyFileSync(FAKE_BASEMIND, copy)
-  fs.chmodSync(copy, 0o755)
-  fakeBasemindPath = copy
-  return copy
+  return FAKE_BASEMIND
 }
 const ROOT_A = path.resolve(here, '..')
 const ROOT_B = FIXTURES

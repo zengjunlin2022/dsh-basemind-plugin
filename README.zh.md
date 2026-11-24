@@ -162,16 +162,18 @@ BaseMind 的 MCP resources（`basemind://status`，以及 `basemind://outline/{p
 
 每個候選都必須先通過版本政策才會被採用。本機版本不符時，日誌與 `/basemind-status` 會說明，然後繼續下一個候選；`binaryFallback: false` 會讓不符的顯式 binary 直接停下，而不是往下掉。
 
-選型在同一個 process 內固定：所有 relay、CLI 呼叫與診斷共用同一個 binary，工作階段切換工作目錄不會重新選型。本機命中或有效快取命中都是 0 次網路；只會寫入插件自管快取（每個 workspace 的 state.json、adopt 快取時的 install.json）。
+選型在同一個 process 內固定：所有 relay、CLI 呼叫與診斷共用同一個 binary，工作階段切換工作目錄不會重新選型。本機命中或有效快取命中都是 0 次網路；只會寫入插件自管快取（每個 workspace 的 state.json、managed 安裝的 install.json）。
 
 ## 7. Managed Binary 自動下載（預設開啟）
 
-`binaryDownload: true` 是預設值，並在 `cordis.patch.yml` 顯式宣告。本機沒有相容 binary 時，插件會從 `github.com/Goldziher/basemind/releases/download/v<version>/` 下載目標 asset、用 `basemind_<version>_checksums.txt` 驗證 SHA256、以純 Node 解開唯一的預期 binary（tar.gz 或 zip；拒絕路徑穿越、symlink、hardlink），再原子安裝。
+`binaryDownload: true` 是預設值，並在 `cordis.patch.yml` 顯式宣告。本機沒有相容 binary 時，插件會從 `github.com/Goldziher/basemind/releases/download/v<version>/` 下載目標 asset、用 `basemind_<version>_checksums.txt` 驗證 SHA256、以純 Node 解開**完整 release tree**（tar.gz 或 zip：主 binary、`lib/` 下的 DLL/SO/DYLIB、Windows root DLL、`licenses/**`、`LICENSE`、`ATTRIBUTIONS.md`、`THIRD_PARTY_LICENSES`；拒絕路徑穿越、symlink、hardlink、device entry），探測解出的 binary、把每個實際寫出的檔案記進 `install.json`，再以目錄 rename 原子替換。這個 tree 必須完整：Windows 執行檔靜態 import `heif.dll`，Linux／macOS 則透過 RUNPATH／`@loader_path` 載入 `lib/`，所以只安裝單一 binary 在四個平台都無法啟動。
 
 - 只寫入 `$DSH_HOME/cache/dsh-basemind-plugin/`。
 - 不碰 BaseMind data home、專案、npm 安裝目錄或 `PATH`，也不執行任何安裝程式。
 - 失敗即封閉：未校驗的 binary 永不執行，插件維持沒有工具，並由 `/basemind-status` 與一行日誌說明原因。
 - 重試有上限（最多再加 2 次）；同一目標連續失敗會冷卻 10 分鐘。
+- 磁碟用量：每個已安裝平台約 230–320 MB，因為保留的是整棵未壓縮 release tree（asset 下載本身是 75–102 MB）。只安裝 pinned 版本與目標平台。
+- 由 layout-1 快取（單一 binary＋舊 install record）升級時，下一次啟動會重新下載完整 tree 一次；舊目錄以原子替換換掉，不會原地修補。
 - `binaryDownload: false` 可完全禁止。
 
 ## 8. 版本匹配規則
@@ -188,9 +190,11 @@ BaseMind 的 MCP resources（`basemind://status`，以及 `basemind://outline/{p
 
 ## 9. 快取、離線與自訂 Binary
 
-- 快取：`$DSH_HOME/cache/dsh-basemind-plugin/managed-binaries/<version>/<platform>/`，platform 為 `windows-x64`、`linux-x64`、`linux-arm64`、`darwin-arm64`；`install.json` 記安裝資訊、`state.json` 記失敗狀態、`download/` 是暫存。`$DSH_HOME` 優先取 `DSH_HOME`，否則 `~/.dsh`。
-- 重用：有效快取命中時完全 0 次網路。刪除快取目錄是安全的，下次啟動會重新選型。
-- 離線：`binaryDownload: false` 禁止所有網路請求。可把相容 binary 放進 `PATH`、用 `command`／`BASEMIND_BIN` 指向它，或預先放入快取。
+- 快取：`$DSH_HOME/cache/dsh-basemind-plugin/managed-binaries/<version>/<platform>/`，platform 為 `windows-x64`、`linux-x64`、`linux-arm64`、`darwin-arm64`；`install.json` 記安裝資訊（layout 2：主 binary、主 binary 自己的 `binarySha256`、檔案數，以及每個已安裝檔案的 `{ path, size }`；`sha256` 仍是下載 archive 的 digest）、`state.json` 記失敗狀態、`download/` 是暫存。`$DSH_HOME` 優先取 `DSH_HOME`，否則 `~/.dsh`。
+- 重用：有效快取命中要求每一個記錄中的檔案都存在且大小相符，因此主 binary、bundled libraries 與授權檔缺一不可。大小與 mtime 只用 `stat` 檢查；只有與記錄不同時才重新 hash 主 binary。有效命中完全 0 次網路。刪除快取目錄是安全的，下次啟動會重新選型。
+- 布局遷移：layout-1 快取（單一 binary＋舊 install record，或沒有 record）視為不完整；`binaryDownload: true` 時下一次啟動會重新下載完整 tree，不會原地修補。`/basemind-status` 會顯示 layout、記錄的檔案數與第一個缺少的檔案。
+- 中斷的替換：若 process 在「舊 tree 移到一旁」與「新 tree 移入」之間結束，舊 tree 會以 `.old-<platform>-*` 留在 target 旁邊。下一次選型會在讀快取之前把它還原（不需下載），並清掉已被取代的殘留，因此 crash 不會遺失快取、也不會留下 230–320 MB 垃圾。
+- 離線：`binaryDownload: false` 禁止所有網路請求。支援的離線路徑是 `PATH` 上的完整官方 BaseMind 安裝（完整 release tree，不是只有執行檔）、`command` 或 `BASEMIND_BIN`。手動把單一 binary 放進 managed 快取不是受支援的安裝方式，會被視為不完整。
 - 自訂 binary：設 `command: "C:\\tools\\basemind\\basemind.exe"` 或 `BASEMIND_BIN`。`binaryFallback: false` 會讓不符的 pin 成為可診斷的硬停點，而不是靜默換掉。
 
 ## 10. 確認本機 Binary：`/basemind-status`

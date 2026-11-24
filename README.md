@@ -162,16 +162,18 @@ On every start the plugin performs one selection per process, in this order:
 
 Every candidate must pass the version policy before it is used. A local binary that does not match is reported in the log and in `/basemind-status`, then the next candidate is tried. `binaryFallback: false` stops at an incompatible explicit binary instead of falling through.
 
-The selection is fixed for the life of the process: every relay, CLI call and diagnostic uses it, and changing a session's working directory does not re-select. A compatible local hit or a valid cache hit performs no network request. Only the plugin-owned cache is written (state.json per workspace, install.json when adopting a cache).
+The selection is fixed for the life of the process: every relay, CLI call and diagnostic uses it, and changing a session's working directory does not re-select. A compatible local hit or a valid cache hit performs no network request. Only the plugin-owned cache is written (state.json per workspace, install.json for a managed install).
 
 ## 7. Managed binary download (on by default)
 
-`binaryDownload: true` is the default and is declared explicitly in `cordis.patch.yml`. When no local compatible binary exists, the plugin downloads the pinned asset from `github.com/Goldziher/basemind/releases/download/v<version>/`, verifies the published SHA256 from `basemind_<version>_checksums.txt`, unpacks the single expected binary with pure Node (tar.gz or zip; traversal, symlink and hardlink entries are rejected), and installs it atomically.
+`binaryDownload: true` is the default and is declared explicitly in `cordis.patch.yml`. When no local compatible binary exists, the plugin downloads the pinned asset from `github.com/Goldziher/basemind/releases/download/v<version>/`, verifies the published SHA256 from `basemind_<version>_checksums.txt`, unpacks the **complete release tree** with pure Node (tar.gz or zip: the main binary, the bundled `lib/` DLL/SO/DYLIB files, root DLLs for Windows, `licenses/**`, `LICENSE`, `ATTRIBUTIONS.md` and `THIRD_PARTY_LICENSES`; traversal, symlink, hardlink and device entries are rejected), probes the unpacked binary, records every installed file in `install.json` and swaps the directory in atomically. The tree must be complete: the Windows executable statically imports `heif.dll`, and the Linux/macOS binaries load `lib/` through their RUNPATH/`@loader_path`, so a single-file install cannot start on any of the four platforms.
 
 - It writes only under `$DSH_HOME/cache/dsh-basemind-plugin/`.
 - It never touches the BaseMind data home, the project, the npm installation or `PATH`, and it never runs an installer.
 - Failure fails closed: an unverified binary is never executed, the plugin stays without tools, and `/basemind-status` plus one log line explain why.
 - Retries are bounded (two extra attempts); repeated failures back off for ten minutes per target.
+- Disk cost: about 230–320 MB per installed platform, because the whole uncompressed release tree is kept (the asset download itself is 75–102 MB). Only the pinned version and target are installed.
+- Upgrading from a layout-1 cache (a single binary plus the old install record) re-downloads the full tree once on the next start. The old directory is swapped out atomically, never patched.
 - Set `binaryDownload: false` to forbid it completely.
 
 ## 8. Version policy
@@ -188,9 +190,11 @@ If you are stuck on `0.34.1`, either wait for a plugin release that pins and ver
 
 ## 9. Cache, offline use and a custom binary
 
-- Cache: `$DSH_HOME/cache/dsh-basemind-plugin/managed-binaries/<version>/<platform>/` where platform is `windows-x64`, `linux-x64`, `linux-arm64` or `darwin-arm64`; metadata lives in `install.json`, failure state in `state.json`, temporary downloads in `download/`. `$DSH_HOME` is `DSH_HOME` when set, otherwise `~/.dsh`.
-- Reuse: a valid cache hit is used with no network at all. Deleting the cache directory is safe; the next start re-selects.
-- Offline: `binaryDownload: false` forbids every network request. Put a compatible binary on `PATH`, point `command` or `BASEMIND_BIN` at one, or pre-seed the cache.
+- Cache: `$DSH_HOME/cache/dsh-basemind-plugin/managed-binaries/<version>/<platform>/` where platform is `windows-x64`, `linux-x64`, `linux-arm64` or `darwin-arm64`; metadata lives in `install.json` (layout 2: main binary, its own `binarySha256`, file count and every installed `{ path, size }`; `sha256` stays the digest of the downloaded archive), failure state in `state.json`, temporary downloads in `download/`. `$DSH_HOME` is `DSH_HOME` when set, otherwise `~/.dsh`.
+- Reuse: a valid cache hit requires every recorded file to exist with its recorded size, so the binary, the bundled libraries and the licence files must all be there. Size and mtime are checked with `stat`; the main binary is re-hashed only when they differ from the record. A valid hit performs no network request at all. Deleting the cache directory is safe; the next start re-selects.
+- Layout migration: a layout-1 cache (one binary plus an old install record, or no record) is incomplete and is replaced by a full download on the next start when `binaryDownload: true`. It is not patched in place. `/basemind-status` shows the layout, the recorded file count and the first missing file.
+- Interrupted swap: if the process stopped between moving the previous tree aside and moving the new one in, that tree sits next to the target as `.old-<platform>-*`. The next selection restores it (no download) before reading the cache and removes any superseded leftover, so a crash cannot lose the cache or leak 230–320 MB.
+- Offline: `binaryDownload: false` forbids every network request. The supported offline paths are a full official BaseMind install on `PATH` (the complete release tree, not just the executable), `command`, or `BASEMIND_BIN`. Hand-placing a single binary in the managed cache is not a supported install and is treated as incomplete.
 - Custom binary: set `command: "C:\\tools\\basemind\\basemind.exe"` or `BASEMIND_BIN`. `binaryFallback: false` turns an incompatible pin into a hard stop with a diagnostic instead of a silent fallthrough.
 
 ## 10. Checking the local binary: /basemind-status

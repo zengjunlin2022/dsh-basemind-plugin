@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The managed binary install was critically incomplete on every platform.** `installPinned()` extracted only the main executable, so the Windows `basemind.exe` could not load its statically imported `heif.dll` (`STATUS_DLL_NOT_FOUND`, `0xC0000135`; `heif.dll` itself needs `libde265.dll`), and the Linux/macOS binaries could not load their `lib/libheif.so*` / `lib/libheif.1.dylib` dependencies. The licence files and `THIRD_PARTY_LICENSES` were dropped as well, so a re-distributed tree lacked the notices the upstream `ATTRIBUTIONS.md` requires. The installer now extracts the complete release tree with pure Node (main binary, bundled `lib/` libraries, Windows root DLLs, `licenses/**`, `LICENSE`, `ATTRIBUTIONS.md`, `THIRD_PARTY_LICENSES`), verifies the main binary is a regular file at the archive root, applies POSIX modes, probes it, records the installed file list in `install.json` (layout 2: `binary`, `size`, `mtimeMs`, `files[]`) and only then swaps the directory into place atomically. Existing protections are kept (absolute/drive/UNC/`..` names, duplicates, links/devices, encrypted zip, zip64, entry-count and size limits, header checksums, declared-size checks) and every destination path is additionally resolved inside the staging directory.
+- **CI test harness:** `test/index.test.mjs` no longer copies `fixtures/fake-basemind.sh` into `os.tmpdir()`. The script resolves its sibling `fake-mcp-server.mjs` / `fake-basemind-cli.mjs` from `$BASH_SOURCE`, so the copy answered `--version` but died with `MODULE_NOT_FOUND` on `serve`, which made three Ubuntu-only tests time out (three × 15 s). It runs in place from its git mode `100755`, and a POSIX preflight assertion now fails in milliseconds with an actionable message if the exec bit is ever lost.
+
+### Changed
+
+- **The managed cache moved to layout 2 and a layout-1 cache is re-downloaded once.** A cache hit now requires the recorded tree (binary plus bundled libraries and licence files) to exist with the recorded sizes and the main binary to pass the version probe: the file list is checked with `stat` only, and the binary is re-hashed — against its own `binarySha256`, never against the archive digest — only when its size or mtime differs from the record. A layout-1 cache (a single binary plus the old install record, or no record) is treated as incomplete and replaced atomically on the next start when `binaryDownload: true`; it is never patched in place, so upgrading costs one 75–102 MB download and about 230–320 MB of disk per platform. `binaryDownload: false`, `command`, `BASEMIND_BIN` and a complete official install on `PATH` remain the supported offline paths; a hand-placed single binary in the cache is no longer adopted.
+- `/basemind-status` reports the managed cache layout, the recorded file count, whether the main binary is present and the first missing file when the tree is incomplete, within the existing width and redaction rules.
+
+- **An interrupted cache swap no longer loses the cache or leaks a tree.** If the process stopped between parking the previous tree as `.old-<platform>-*` and moving the new one in, the next selection restores the parked tree before reading the cache (no download, works with `binaryDownload: false`) and removes superseded leftovers; a failed restore now logs the parked path at warning level instead of staying silent.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

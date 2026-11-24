@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename as renamePath, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -149,6 +149,7 @@ async function setup(t, spec = {}) {
     extractor,
     checksumsFetcher,
     hasher,
+    renameFn: spec.renameFn,
   });
 
   const managedRoot = path.join(cacheRoot, 'managed-binaries');
@@ -167,8 +168,39 @@ async function setup(t, spec = {}) {
   };
 }
 
-/** Seed a managed cache directory with a binary and an install record. */
-async function seedCache(targetDir, binaryName, install = {}) {
+/** Seed a managed cache directory with a complete layout-2 tree and install record. */
+async function seedCache(targetDir, binaryName, install = {}, extraFiles = {}) {
+  const file = path.join(targetDir, binaryName);
+  await mkdir(targetDir, { recursive: true });
+  await writeFile(file, 'MZ installed basemind');
+  const info = await stat(file);
+  const files = [{ path: binaryName, size: info.size }];
+  for (const [relative, data] of Object.entries(extraFiles)) {
+    const extra = path.join(targetDir, relative);
+    await mkdir(path.dirname(extra), { recursive: true });
+    await writeFile(extra, data);
+    files.push({ path: relative, size: Buffer.byteLength(data) });
+  }
+  files.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+  const record = {
+    layout: 2,
+    version: VERSION,
+    target: path.basename(targetDir),
+    sha256: DIGEST,
+    binarySha256: DIGEST,
+    binary: binaryName,
+    size: info.size,
+    mtimeMs: info.mtimeMs,
+    installedAt: new Date(FIXED_NOW).toISOString(),
+    files,
+    ...install,
+  };
+  await writeFile(path.join(targetDir, 'install.json'), JSON.stringify(record, null, 2) + '\n');
+  return { file, info, record };
+}
+
+/** Seed the layout-1 cache shape an earlier release left behind. */
+async function seedLayout1Cache(targetDir, binaryName) {
   const file = path.join(targetDir, binaryName);
   await mkdir(targetDir, { recursive: true });
   await writeFile(file, 'MZ installed basemind');
@@ -180,7 +212,6 @@ async function seedCache(targetDir, binaryName, install = {}) {
     size: info.size,
     mtimeMs: info.mtimeMs,
     installedAt: new Date(FIXED_NOW).toISOString(),
-    ...install,
   };
   await writeFile(path.join(targetDir, 'install.json'), JSON.stringify(record, null, 2) + '\n');
   return { file, info, record };
@@ -433,7 +464,7 @@ test('a changed binary that still matches its recorded digest is accepted after 
   assert.equal(h.calls.hash.length, 1);
 });
 
-test('an adopted cache without an install record gains one on the next selection', async (t) => {
+test('a hand-placed single binary is an incomplete cache: not adopted, not deleted', async (t) => {
   const h = await setup(t, { config: { binaryDownload: false } });
   const file = path.join(h.targetDir, h.binaryName);
   await mkdir(h.targetDir, { recursive: true });
@@ -441,13 +472,191 @@ test('an adopted cache without an install record gains one on the next selection
 
   const selection = await h.manager.select();
 
-  assert.equal(selection.source, 'managed');
-  const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
-  assert.equal(install.source, 'adopted');
-  assert.equal(install.version, VERSION);
+  assert.equal(selection.ok, false, 'a single binary cannot be a self-sufficient managed install');
+  assert.equal(selection.source, undefined);
+  assert.equal(existsSync(file), true, 'the incomplete cache is left for the atomic replacement');
+  assert.equal(existsSync(path.join(h.targetDir, 'install.json')), false, 'no adoption record is written');
+  assert.equal(h.calls.download.length, 0, 'binaryDownload false still performs no download');
 });
 
 // --------------------------------------------------------------- download ----
+
+test('a layout-2 install records the complete extracted tree', async (t) => {
+  const h = await setup(t, {
+    config: { binaryDownload: true },
+    extract: async (options) => {
+      await mkdir(path.join(options.destDir, 'lib'), { recursive: true });
+      await mkdir(path.join(options.destDir, 'licenses'), { recursive: true });
+      await writeFile(options.destFile, 'MZ fake basemind binary');
+      await writeFile(path.join(options.destDir, 'lib', 'libheif.so.1'), 'fake shared object');
+      await writeFile(path.join(options.destDir, 'LICENSE'), 'Apache License 2.0\n');
+      return { files: [], bytes: 0 };
+    },
+  });
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true);
+  assert.equal(h.calls.extract.length, 1);
+  assert.equal(path.basename(h.calls.extract[0].destDir), 'extracted', 'the whole archive is unpacked into staging/extracted');
+  assert.equal(h.calls.extract[0].limits.maxTotalBytes, 2 * 1024 * 1024 * 1024);
+  assert.equal(h.calls.extract[0].limits.maxEntryBytes, 1024 * 1024 * 1024);
+  assert.equal(h.calls.extract[0].limits.maxEntries, undefined, 'the default entry-count limit still applies');
+
+  const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(install.layout, 2);
+  assert.equal(install.binary, 'basemind');
+  assert.deepEqual(install.files.map((file) => file.path), ['LICENSE', 'basemind', 'lib/libheif.so.1']);
+  assert.deepEqual(install.files.find((file) => file.path === 'lib/libheif.so.1'), {
+    path: 'lib/libheif.so.1',
+    size: 'fake shared object'.length,
+  });
+  assert.equal(install.size, 'MZ fake basemind binary'.length);
+  assert.equal(existsSync(path.join(h.targetDir, 'lib', 'libheif.so.1')), true);
+  assert.equal(existsSync(path.join(h.targetDir, 'LICENSE')), true);
+});
+
+test('a layout-1 cache is treated as incomplete and re-downloaded', async (t) => {
+  const h = await setup(t, { config: { binaryDownload: true } });
+  const seeded = await seedLayout1Cache(h.targetDir, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true);
+  assert.equal(selection.source, 'managed');
+  assert.equal(h.calls.download.length, 1, 'the single-file cache is replaced, not patched');
+  const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(install.layout, 2);
+  assert.equal(install.binary, h.binaryName);
+  assert.deepEqual(install.files, [{ path: h.binaryName, size: 'MZ fake basemind binary'.length }]);
+  assert.equal(seeded.record.layout, undefined, 'the seeded record was the old layout');
+});
+
+test('a layout-2 record without a binary digest is treated as incomplete', async (t) => {
+  // `sha256` is the archive digest and can never verify the unpacked binary, so a record
+  // that does not carry `binarySha256` cannot prove its own contents.
+  const h = await setup(t, { config: { binaryDownload: true } });
+  await seedCache(h.targetDir, h.binaryName, { binarySha256: undefined });
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true);
+  assert.equal(h.calls.download.length, 1, 'the unprovable cache is replaced');
+  const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(install.layout, 2);
+  assert.equal(install.binarySha256, DIGEST, 'the new record carries the binary digest');
+});
+
+test('a layout-2 cache with a missing lib file is detected and re-downloaded', async (t) => {
+  const h = await setup(t, { config: { binaryDownload: true } });
+  await seedCache(h.targetDir, h.binaryName, {}, { 'lib/libheif.so.1': 'fake shared object' });
+  await rm(path.join(h.targetDir, 'lib', 'libheif.so.1'));
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true);
+  assert.equal(h.calls.download.length, 1, 'an incomplete tree is never reused');
+  assert.ok(
+    h.logger.warnings.some((warning) => warning.includes('incomplete') && warning.includes('lib/libheif.so.1')),
+    'the missing file is reported',
+  );
+  const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(install.layout, 2);
+  assert.deepEqual(install.files.map((file) => file.path), [h.binaryName]);
+});
+
+test('a layout-2 Windows cache missing heif.dll is detected and re-downloaded', async (t) => {
+  const h = await setup(t, { platform: 'win32', arch: 'x64', config: { binaryDownload: true } });
+  await seedCache(h.targetDir, 'basemind.exe', {}, { 'heif.dll': 'MZ fake heif' });
+  await rm(path.join(h.targetDir, 'heif.dll'));
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true);
+  assert.equal(h.calls.download.length, 1, 'the statically imported DLL is part of the install');
+  assert.ok(h.logger.warnings.some((warning) => warning.includes('heif.dll')), 'the missing DLL is reported');
+  const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(install.layout, 2);
+  assert.deepEqual(install.files, [{ path: 'basemind.exe', size: 'MZ fake basemind binary'.length }]);
+});
+
+test('binaryPath follows install.json.binary when it names the binary', async (t) => {
+  const h = await setup(t, { config: { binaryDownload: false } });
+  const seeded = await seedCache(h.targetDir, 'basemind.exe');
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true);
+  assert.equal(selection.path, seeded.file);
+});
+
+test('a failed re-install leaves the previous cache directory untouched', async (t) => {
+  const h = await setup(t, { config: { binaryDownload: true }, download: 'throw' });
+  const seeded = await seedLayout1Cache(h.targetDir, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, false);
+  assert.equal(existsSync(seeded.file), true, 'the previous binary survives a failed download');
+  const record = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(record.layout, undefined, 'the previous record is not rewritten');
+  const staging = path.join(h.cacheRoot, 'download');
+  assert.deepEqual(existsSync(staging) ? await readdir(staging) : [], [], 'staging is cleaned up');
+});
+
+test('an interrupted swap is recovered from the parked .old tree without a download', async (t) => {
+  const h = await setup(t, { config: { binaryDownload: false } });
+  const parked = path.join(path.dirname(h.targetDir), '.old-linux-x64-crashed');
+  await seedCache(parked, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, true, selection.reason);
+  assert.equal(selection.source, 'managed');
+  assert.equal(h.calls.download.length, 0, 'recovery never downloads');
+  assert.equal(h.calls.checksums.length, 0);
+  assert.equal(existsSync(path.join(h.targetDir, h.binaryName)), true, 'the parked tree is back in place');
+  assert.deepEqual(
+    (await readdir(path.dirname(h.targetDir))).filter((name) => name.startsWith('.old-')),
+    [],
+    'the parked tree is consumed, not copied',
+  );
+});
+
+test('a locked destination rename fails with an actionable message and keeps the old tree', async (t) => {
+  let targetDir;
+  let attempts = 0;
+  const h = await setup(t, {
+    config: { binaryDownload: true },
+    renameFn: async (from, to) => {
+      // Block only the swap of the extracted tree; the restore of the parked tree must
+      // still be able to run once the lock clears.
+      if (to === targetDir && path.basename(from).startsWith('.old-') === false) {
+        attempts += 1;
+        throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+      }
+      return await renamePath(from, to);
+    },
+  });
+  targetDir = h.targetDir;
+  const seeded = await seedLayout1Cache(h.targetDir, h.binaryName);
+
+  const selection = await h.manager.select();
+
+  assert.equal(selection.ok, false);
+  assert.equal(attempts, 5, 'the rename retry is bounded');
+  assert.ok(selection.reason.includes('after 5 attempts'), selection.reason);
+  assert.ok(selection.reason.includes('restart DSH'), selection.reason);
+  assert.equal(existsSync(seeded.file), true, 'the old tree is restored after the failed swap');
+  const record = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
+  assert.equal(record.layout, undefined, 'the old record survives');
+  assert.deepEqual(
+    (await readdir(path.dirname(h.targetDir))).filter((name) => name.startsWith('.old-')),
+    [],
+    'no half-installed directory is left behind',
+  );
+});
+
 
 test('binaryDownload true installs once when nothing local is usable', async (t) => {
   const h = await setup(t, { config: { binaryDownload: true } });
@@ -464,7 +673,8 @@ test('binaryDownload true installs once when nothing local is usable', async (t)
   assert.equal(h.calls.extract[0].entryPath, 'basemind');
 
   const install = JSON.parse(await readFile(path.join(h.targetDir, 'install.json'), 'utf8'));
-  assert.equal(install.sha256, DIGEST);
+  assert.equal(install.sha256, DIGEST, 'sha256 is the downloaded archive digest');
+  assert.equal(install.binarySha256, DIGEST, 'binarySha256 comes from the hasher seam');
   assert.equal(install.version, VERSION);
   assert.equal(install.target, 'linux-x64');
   assert.equal(install.tag, UPSTREAM.tag);
