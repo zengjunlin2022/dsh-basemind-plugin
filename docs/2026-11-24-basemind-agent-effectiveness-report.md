@@ -40,7 +40,7 @@
 | 測試 Profile tarball | `ad5d8083…`（19:17）**早於 3B**：bootstrap 仍 `glob/bash`、index.js 無 `pool.forget`；需從 `d88a746` 重建 |
 | `D:/_bm_phase3/exchange.txt` | 538 bytes、含 `Set-Cookie`（web auth cookie）→ 敏感暫存 |
 
-> 上表是 **19:49 的快照**；最新狀態見 §11.8（20:09–20:35 續跑）與 §11.9（20:36 Review）。
+> 上表是 **19:49 的快照**；最新狀態見 §11.8（20:09–20:35 續跑）與 §11.9（20:36 Review）；冷啟動修復見 §11.16，Review 後修正見 §11.17。
 
 ### 0.2 完成度判定（2026-11-24 20:40）
 
@@ -70,6 +70,21 @@
 - `benchmark/` 任務／Ground Truth／staged repo／scoring；3C Pilot 12；3D 24 no-reuse。
 - 3E README／CHANGELOG、Desktop D6/D9/D10/D11、最終 Review。
 - local `d88a746` push（目前 ahead 1、未 push）；本報告未提交。
+
+### 0.3 最新進度快照（2026-11-24 21:40）
+
+> §0.2 是 20:40 快照；以下為最新。詳細證據見 §11.10–§11.14。
+
+| 項目 | 現況 |
+| --- | --- |
+| `main` / PR | `2a17e9b`；PR #1 **merged**（merge commit `9609872`）；D1b run `45398697251` **三平台全綠**；CI push main success |
+| 3A | 暖機後：P3-03／04／05／07／08／11／14／16／25 **PASS**；P3-06 **PARTIAL**；P3-09／10／12／13／15／17／18 **NOT RUN** |
+| 3A 成本 | 4 個主要 session 合計 **572,671** tokens＋smoke **25,961** ≈ **598,632**；已超過原 3A 子預算 0.3M（總 12M 仍充足） |
+| 3C／3D | **NOT RUN**；`benchmark/` 缺失；無 Pilot／24 次結果 |
+| 3E | **NOT RUN**；README／CHANGELOG 未改；Desktop D3–D15 NOT RUN |
+| 模型 | 3A sessions：`deepseek-account`／`deepseek-flash`／high；GPT 只有 smoke（`openai-codex`／`gpt-6.1-sol`／low），尚未進 A/B |
+| 冷啟動 | session `25e9ef88` 第 1 輪 34 tools／0 `mcp__basemind__`；第 2 輪 56／19；暖機後新 session 第 1 輪即 56／19 |
+| 工作區 | 只有本報告未提交（§11.13–§11.14）；main 與 origin 同步；無 local commit／push |
 
 ---
 
@@ -304,6 +319,8 @@ test/workflows.test.mjs 新增：
 ---
 
 ## 10. Checklist 對照（§28）
+
+> 此表是 **原始 Execution 快照**；後續 3A 進度與最新判定見 **§11.13–§11.17**。
 
 | # | 結果 |
 | --- | --- |
@@ -620,5 +637,303 @@ test/workflows.test.mjs 新增：
 2. 續做 3A-3（resume）、3A-4（/compact；可能需要 GUI 或 commands API）、3A-5（relay R1/R2）、3A-6（subagent／多 session）。
 3. 以 driver 建 benchmark runner：每 run 新 session、暖機一輪、記錄 usage、套 per-run 400k 守門。
 
+### 11.13 2026-11-24 21:25–21:50 續跑（第六輪）：3A-2 取證完成（暖機法）、catalog 與 skill 載入通過
+
+#### (1) 暖機法（重要操作結論）
+
+冷 process 的第一個 session 第 1 輪沒有 BaseMind 工具（34 tools、無 mcp__basemind__、無 bootstrap）；先跑一個暖機會話後，**新 session 的第 1 輪即有 56 tools／19 mcp__basemind__／bootstrap 10,350 bytes**。benchmark 與 3A 都必須「暖機後再量測」。
+
+#### (2) skills catalog（P3-03 PASS）
+
+- 量測修正：web session 的 user/message 文字在 data.content（不是 data.message.content）。
+- 實測：skill-catalog 訊息 1 則、**6,076 bytes**，列出 **10 個 basemind skills**（code-search、cli、comms、doctor、documents、git-history、multi-agent-room、scan、stats、basemind 本體）。
+
+#### (3) skill 正文載入＋實際使用（P3-04 PASS）
+
+session session-8a1f9e4c：tool 序列 skill → mcp__basemind__code_symbols → mcp__basemind__code_read；結果正確指出 scripts/phase3/web-api.mjs 的 createClient 在 line 19（本體 19–43），回答中明寫載入 basemind-code-search；tool errors = 0；usage total 138,163。
+
+#### (4) 其他量測
+
+- P3-05（bootstrap）：system message 10,350 bytes 含 BaseMind 段；同一 session 多輪仍只有 1 個 system message（未累積）。
+- P3-06（成本量測）：system 10,350 bytes、tool schema 36,531 bytes、catalog 6,076 bytes；usage 可由 session log 取得（例：63,547／88,910／138,163）。
+- P3-15（跨工作區）：session 指向非專案目錄 D:/_bm_phase3/ws-a 時 index_status 直接報錯（BaseMind 要求 project root），不是插件路由錯誤；跨 repo 隔離測試需改用兩個真實 repo。
+
+#### (5) 3A-9 等價性結論
+
+headless + --patch 插入 plugin 時 request/header 從未出現 mcp__basemind__*（重複驗證）→ headless 不等價。依 D10 fallback：**Benchmark harness 改用 Web API**（driver 已可用）。
+
+#### (6) 仍未完成
+
+3A-3 resume（跨 process）、3A-4／P3-09／P3-10 compaction（session-controller 無 compact 端點）、3A-5 R1／R2 relay 終止、3A-6 subagent、3A-8 Vue／Java 邊界、3C Pilot、3D 24、3E。
+
+### 11.14 2026-11-24 21:36–21:52 續跑（第七輪）：resume、R1 relay 恢復、subagent 實測
+
+#### (1) P3-07／P3-08 resume — PASS
+
+- session session-5916a54c 在**換 process**（原實例終止、重新開機同 profile／同 port）後成功續跑：
+  - turn 數 4（重啟前 3、重啟後 1）、session 檔仍只有 1 個（未分裂）；
+  - 兩次 request 都是 56 tools／19 mcp__basemind__；system message 只有 1 份（未重複）；
+  - Agent 正確回顧先前 4 次 root 回報（verbatim 前綴 + D:/02_zengjunlin/github/dsh-basemind-plugin、HEAD 2a17e9b、索引 64 檔）；
+  - 整段 usage total 253,024。
+
+#### (2) P3-11 R1（primary relay 終止）— PASS（真實環境）
+
+- 以 Stop-Process 終止 basemind serve（PID 16844）。
+- 之後 3 次 index_status 呼叫**全部成功、0 tool error**，並自動長出新的 serve process（PID 2712）。
+- 回報值正確（root／branch main／HEAD 2a17e9b／索引 64 檔）→ **3B 的 F1 修復在真實 web app + 真實 relay 下成立**。
+
+#### (3) P3-12 R2 — NOT RUN
+
+需要第二個真實專案 repo 與其獨立 relay；本輪只有一個 workspace，未測。
+
+#### (4) P3-16 subagent — PASS（基本）
+
+- 父 session session-8427cca6：tool 序列 subagent → wait_agent；無 tool error。
+- 子代理（root-reporter）回覆 verbatim 前綴 + D:/02_zengjunlin/github/dsh-basemind-plugin，與父層一致 → 子代理有 MCP 工具且 cwd 正確，未污染父層。
+- 父 session usage total 92,574。
+
+#### (5) P3-09／P3-10 compaction — NOT RUN
+
+- dsh-api-session-controller 沒有任何 compact 端點（原始碼僅有 "compact stream" 等無關字樣）；Web API 無法觸發 /compact。
+- 依計畫 §11.2，compaction 需 GUI（或 commands API）；本輪不改產品程式碼。
+
+#### (6) 仍未完成
+
+3A-8（Vue／Java 邊界）、3C Pilot、3D 24、3E（3A-9 已下結論：Web API）。
+
+### 11.15 當期進度檢查（2026-11-24 21:40）
+
+**已完成**
+- `main` = `2a17e9b`；PR #1 merged；D1b `45398697251` 三平台全綠；CI push main success。
+- 3A 暖機後：P3-03／04／05／07／08／11／14／16／25 PASS；P3-06 PARTIAL；3A-9 結論 Web API。
+- 3A usage（4 個主要 session）：25e9ef88 88,910＋8a1f9e4c 138,163＋5916a54c 253,024＋8427cca6 92,574 = **572,671**；加 smoke 25,961 ≈ **598,632**。
+
+**Open findings**
+1. **冷啟動 gap（Important candidate）**：`25e9ef88` 第 1 輪 34 tools／0 `mcp__basemind__`、無 bootstrap、catalog 4,809 B；第 2 輪 56／19、bootstrap 10,350 B、catalog 12,020 B。暖機後新 session 第 1 輪就有 56／19。這表示真實新 session 的第一輪可能沒有 BaseMind 工具／引導；benchmark 的暖機法會掩蓋它。**P3-03／P3-05 應標「暖機後 PASS」，不是無條件 PASS。** 需決定：最小 readiness 修復，或在文件明示 first-turn 限制。
+2. **3A 子預算超支**：≈598,632 > 原 0.3M；總 12M 仍充足。需調整 3A 子預算或停止再花。
+3. **Compaction 仍 NOT RUN**：session-controller 無 compact 端點；commands namespace／GUI 尚未探索；P3-09／10 不能算完成。
+4. **P3-12／13／15／17／18 NOT RUN**：R2 secondary relay、R3 daemon unavailable、多 session 隔離（需兩個真實 repo）、插件停用／重載、Vue／Java 邊界。
+5. **3C／3D／3E 未開始**：`benchmark/` 缺失、README／CHANGELOG 未改、Desktop D3–D15 NOT RUN。
+6. **GPT 尚未進 A/B**：只有 smoke（`openai-codex`／`gpt-6.1-sol`／low）；3A 全部是 DeepSeek。需確認 GPT route 在 benchmark profile 可重現。
+7. **報告／工作區**：§11.13–§11.14 未提交；main 與 origin 同步；無 local commit／push。
+8. **時戳**：§11.14 寫 21:36–21:52，但目前 21:40；以 session log 時間為準，建議校正。
+
+### 11.16 2026-11-24 21:48–22:15 Phase A：新 session 第一輪冷啟動修復
+
+#### (1) 結論
+
+冷啟動 gap 已修復並在真實冷 process 驗證：第一個 session 的第 1 輪由 **34 tools／0 `mcp__basemind__`／無 bootstrap／catalog 無 basemind skills** 變成 **54 tools／19 `mcp__basemind__`／bootstrap（system 10,350 B）／10 個 basemind skills**；同一 process 的第二個 session、以及第 2 輪都正常。根因是插件違反 host 的「`agent/created` listener 完成前不釋放排隊工作」契約，不是 DSH host 問題。
+
+#### (2) 重現（修復前，冷 process）
+
+- 新 web 實例：`dsh bm-bench-b --no-open --port 0`（先清 `DSH_WEB_URL`／`DSH_PROFILE_DIR`／`DSH_PROFILE`／`DSH_SESSION_ID`），log `D:/_bm_phase3/cold/cold-a.log`。
+- 同一 process 連續建兩個 session、各自在 `session/create` 後立刻送第一個 prompt（不暖機）。
+- 讀 `session.v4.jsonl.zstd` 的第一個 `request/header` 與 `system/message`：
+
+| session | 第 1 輪 tools | `mcp__basemind__` | system bytes | bootstrap | catalog entries／basemind skills |
+| --- | --- | --- | --- | --- | --- |
+| 19c321d6（第 1 個） | 34 | **0** | 6,334 | 無 | 8／0 |
+| 2eae3750（第 2 個，同 process） | 34 | **0** | 6,334 | 無 | 8／0 |
+
+重現成功。
+
+#### (3) 根因（先證據）
+
+- **host 契約**：`dsh-agent-loop/src/index.ts` 建立 agent 時 `await loopCtx.agents.announce(agent, …)`（:638）；`dsh-agent/src/index.ts` 對 `createAgent` 的說明明寫「awaits serial `agent/created` listeners **before releasing queued work**」（:176）；`dsh-agent-loop/src/index.ts:506` 在 publication 未完成時 `await publication.promise`，因此第一個 prompt 的 turn 一定等 announce（含 listener）完成。
+- **插件行為**：`index.js` 的 listener 是 `void adoptAgentRoot(agent)`（fire-and-forget）。announce 立即完成，relay 的 spawn／`initialize`／`tools/list` 仍在背景跑，於是第一輪在 `agent/pre-step` 之前的 `tools.resolve`（`agent-loop/src/agent.ts:298`）與 `systemPrompt.assemble`（:300）就已定稿，工具與 prompt section 都還沒註冊。
+- **skills catalog 同理**：catalog 由 `dsh-tool-skill` 在第一個 `agent/pre-step` 以 `ctx.skills.snapshot()` 計算（`dsh-tool-skill/src/index.ts:217–230`）；插件 readiness 未成立時 provider 回空清單。
+- **為何不在 `agent/pre-step` gate**：pre-step waterfall 在工具解析與 prompt 組裝**之後**才 dispatch（agent.ts:298–303），在那裡等待無法補上本輪工具；`agent/created` 才是正確且 host 已 await 的位置。**不是 host bug，也不需要改 DSH。**
+
+#### (4) 最小修復
+
+- `index.js`：`agent/created` listener 改為 `return adoptAgentRoot(agent, payload?.signal)`，把初始化 promise 交回 host。
+- 新增 `settleWithin()`（timeout／AbortSignal race）、`startPrimary()` 與 `state.initPromise`：併發建立會加入同一個 attempt；`waitForPrimary()` 有界等待直到 ready／blocked／attempt 結束。
+- 邊界與 fallback：預設 `coldStartTimeoutMs = 15000`（`lib/config.js`，0 = 停用 gate，上限 120,000）；timeout／abort／失敗只記一則 warn（或 debug）後照常進行。**只有第一次 attempt 會 gate**（`!state.attempted || state.initPromise !== undefined`）：失敗後的背景重試維持原行為，避免每個新 session 都被失敗時間拖慢。
+- 未新增常駐服務、未改 Workspace Pool／MCP Bridge／Skills Provider、未改 DSH host、未新增 dependency。
+- 同步更新：`test/index.test.mjs`（fake ctx 的 `emit` 改成會 await listener，模擬 `ctx.serial`）、`fixtures/fake-mcp-server.mjs`（`FAKE_MCP_INIT_DELAY_MS` 模擬慢 handshake）、`test/config.test.mjs`、`CHANGELOG.md`。
+
+#### (5) 驗證
+
+**(a) deterministic（新增 5 個 case）**
+
+| case | 結果 |
+| --- | --- |
+| 慢 relay（500 ms）下建 agent | creation 等 ≥300 ms；resolve 時 tools 與 `mcp:basemind` section 已存在；無 timeout warn |
+| 同時兩個 agent | 兩者都等同一個 relay，只 spawn 1 個 relay |
+| budget 200 ms＋relay 1500 ms | creation < 3 s；warn 含 `not ready within 200 ms`；背景仍補註冊，工具無重複 |
+| `coldStartTimeoutMs: 0` | 立即返回（<400 ms），工具之後出現 |
+| BaseMind 不可用（`launchable:false`） | creation < 5 s；有 `BaseMind startup failed`；無 tools、無 sections |
+
+`npm run check`：syntax ok（20 files）、bundle manifest ok。
+
+**(b) 真實冷 process（修復後）**
+
+- 以 working tree `npm pack`（未 commit）安裝到新 test profile `bm-bench-c`，冷啟 `dsh bm-bench-c --no-open --port 0`。
+- `create1 = 694 ms`（gate 等待 relay handshake）、`prompt1 = 17 ms`；第二個 session `create2 = 51 ms`。
+- 第 1 輪（兩個 session 都是）：**54 tools／19 `mcp__basemind__`**、system **10,350 B**（含 bootstrap）、catalog **18 entries／10 basemind skills**。
+- 第 2 輪：`turn/end` 正常；`request/header` 全 session 只記一次（工具集未變，agent.ts `toolsChanged`），無重複註冊、無 tool error。
+
+| session | 第 1 輪 tools | `mcp__basemind__` | system bytes | bootstrap | catalog entries／basemind skills |
+| --- | --- | --- | --- | --- | --- |
+| 0997fd98 | 54 | **19** | 10,350 | 有 | 18／**10** |
+| 2c02a801（同 process，第 2 個） | 54 | **19** | 10,350 | 有 | 18／**10** |
+
+**(c) 失敗路徑（真實冷 process）**
+
+- `bm-bench-d`：plugin row 設 `command: basemind-missing-for-the-cold-start-probe`、`binaryDownload: false`、`binaryFallback: false`。
+- `create1 = 85 ms`、`create2 = 69 ms`（**無 15 s hang**）；第 1 輪 **32 tools／0 `mcp__basemind__`**（fallback 照常進行，與修復前一致）。
+- 專屬可診斷訊息由 `test/index.test.mjs` 斷言（`not ready within …`／`BaseMind startup failed`）；host 的 plugin logger 不寫入 web process stdout，故真實 run 以行為（不 hang、照常進行）為證據。
+
+**(d) `npm test`**
+
+- 完整 `npm test` 共 4 次（21:5x–22:3x，最後一次含 diagnostic 微調）：
+
+| run | 模式 | 結果 |
+| --- | --- | --- |
+| 1 | 並行（預設） | 452 tests／441 pass／10 skipped／**1 fail** |
+| 2 | 並行 | 452／440／10／**2 fail** |
+| 3 | 序列 `--test-concurrency=1` | **452／442／10／0 fail**（100 s） |
+| 4 | 序列（diag 微調後） | 452／441／10／1 fail |
+
+- 5 次失敗全部是 `test/integration.test.mjs` 的真實 BaseMind index build 超時（`the BaseMind index did not finish building within 150000 ms`，:578）；其餘 441–442 個測試（含 5 個新 cold-start case）每次全綠。
+- 該測試與本次 diff 無關：未 import `apply()`、不觸發 `agent/created`，以 `createStdioClient`＋`createMcpSession` 直接驅動真實 relay。
+- 隔離重跑 integration：working tree **8/8 pass**（132 s）、`2a17e9b` pristine worktree **8/8 pass**（74 s）。同一 index build 實測 **62–152 s**、門檻 150 s → 既有 timing flake，不是本次 regression。
+
+#### (6) 殘留風險／未驗證
+
+1. 只驗 **Windows**；macOS／Linux 未實跑真實冷啟動（CI 只跑單元測試）。
+2. gate 會把 relay 初始化時間加到「session 建立」延遲（實測 694 ms，上限 15 s）。
+3. 只有第一次 attempt 會 gate：若第一個 session 的 root 不可用（BaseMind 拒絕非專案目錄），在 retry backoff 內建立的新 session 第一輪仍可能沒有工具（與修復前行為相同，未惡化）。→ **此限制已由 §11.17 修正**（改為「每個 root 第一次嘗試才 gate」）。
+4. 真實驗證使用 working tree pack（未 commit）；Phase B 需從新 commit 重建 tarball 重驗 F1／F2／cold-start。
+5. 新增 test profile `bm-bench-c`（修復驗證）與 `bm-bench-d`（失敗路徑，刻意壞設定）；Desktop profile 未動。probe／log／pack 都在 `D:/_bm_phase3/cold/`。
+6. `npm test` 的 integration index build 在本機為 62–152 s、門檻 150 s，**並行與序列都可能超時**（4 次完整 run 中 3 次有 1–2 個 integration 失敗，全部同一測試）。建議另案把 `INDEX_BUILD_TIMEOUT_MS` 提高或改為 retry/skip（本次未改，避免擴大 Phase A scope）。
+
+#### (7) 工作區狀態
+
+- 未提交：`index.js`、`lib/config.js`、`test/index.test.mjs`、`test/config.test.mjs`、`fixtures/fake-mcp-server.mjs`、`CHANGELOG.md`、本報告。
+- 無 local commit／push／merge；`main` 仍 `2a17e9b`；Desktop profile 未動；業務 repo 只讀。
+- 停點：Phase A 完成，等待 review／commit 後才進 Phase B。
+
+---
+
+### 11.17 2026-11-24 22:41–23:05 Phase A：冷啟動 Review findings 修正
+
+#### (1) 結論
+
+Review 的 Important 1、2 已修並新增 deterministic 測試；Important 3 以文件化處理；Finding 4（integration index build timeout）維持另案、未改測試門檻。目標檔案無新增 runtime dependency、未改 DSH host、未改 Workspace Pool／MCP Bridge／Skills Provider、未動 Desktop profile。
+
+#### (2) Important 1 — `agent-first` per-root gate
+
+- `state.attempted`（單一 boolean）改為 `state.attemptedRoots`（lower-case `Set`）；每次 attempt 前以**實際要試的 root** 記錄。
+- `ensurePrimary()` 的候選 root 迴圈外層改為 `for (;;)`：mid-attempt 才出現的 root 由 `state.recheck` 在**同一個 promise** 內再跑一輪，因此 `waitForPrimary()` 等的是「含 recheck 的 attempt」，不會先被舊 attempt 的失敗放行。
+- `scheduleRetry()` 改走 `startPrimary()`，retry attempt 也進 `state.initPromise`，建立中的 Agent 會等它。
+- `gate` 條件改為 `state.initPromise !== undefined || (本次 Agent 的 root 屬於此 mode 的候選 root 且尚未嘗試過)`。第三個條件是刻意加的：`default` mode 不採用 Agent 目錄，若只因 Agent root 未見就 gate，等於讓每個 session 都去等一個不可能產生它工具的 attempt。
+
+#### (3) Important 2 — directory timeout 後仍背景 adoption
+
+- `adoptAgentRoot()` 在 budget 到期、且不是 abort 時，對 `directoryPromise` 掛 non-blocking continuation；`adoptLateDirectory()` 在 `!disposed && !ready && !blocked` 時設 `preferredRoot`、`retryIndex = 0`；若 attempt 正在跑就設 `state.recheck` 併入同一個 attempt，否則 `startPrimary()`。
+- 不 await、不延長第一輪；aborted creation 不追蹤（該 Agent 已不存在）。
+
+#### (4) Important 3 — 決策：文件化，不拉高預設
+
+- `README.md`／`README.zh.md` 新增 §5.3「新 session 的第一輪」：預算涵蓋 `workingDirectory.ensure`＋handshake＋`tools/list`；`0` 停用、上限 120000；late directory 仍會在背景被採用；**first-ever `binaryDownload` 安裝（75–102 MB、13.5–55.7 s）不在 15 s 預算內**，第一次 session 第一輪仍可能沒有工具。
+- `CHANGELOG.md` Unreleased Fixed 同步寫入同一條件（含 per-root gate 與 late adoption）。
+- 不拉高 `coldStartTimeoutMs`：`startupTimeoutMs` 已是 60 s，把 agent creation 擋到 55 s 不是可接受的 UX；要真的覆蓋需另案設計（例如 first-install 專用預算）。
+
+#### (5) 測試
+
+| case（`test/index.test.mjs`） | 斷言 |
+| --- | --- |
+| `agent-first still gates the first turn after the deployment default failed` | `failRoots` 讓 deployment default 失敗、500 ms handshake；`agent/created` resolve 時 tools 與 `mcp:basemind` section 已存在，creation ≥300 ms |
+| `a working directory that arrives after the cold-start budget still starts the relay` | `ensureDelayMs: 600`、budget 150 ms；creation 在預算內返回且當下無 tools；晚到的目錄仍啟動 relay，`admin status` 回 `root = ROOT_A` |
+
+- fake context 新增 `ensureDelayMs`（模擬慢／遠端 cwd）；既有 5 個 cold-start case 不變。
+- 這兩個 case 對應的舊行為（舊 `gate` 在 `agent-first` 首輪為 false；舊 timeout 分支直接 return、沒有後續 adoption）是程式碼路徑推論，未在舊版程式碼上實跑重現。
+
+#### (6) 驗證
+
+| 命令 | 結果 |
+| --- | --- |
+| `node --test test/index.test.mjs test/config.test.mjs` | **53/53 pass**（9.3 s） |
+| `npm run check` | syntax ok（20 files）＋bundle manifest ok |
+| `node --test test/integration.test.mjs`（isolated） | **安靜重跑 8/8 pass**（48.6 s）；併行負載下的 3 次失敗見下 |
+| 真實冷 process（working tree pack → `bm-bench-c`） | create1 **1,432 ms**、prompt1 33 ms、create2 65 ms；兩個 session 第 1 輪皆 **54 tools／19 `mcp__basemind__`／system 10,350 B／bootstrap／catalog 18 entries／10 basemind skills** |
+
+- 真實冷 evidence：session `5687fce4`（第 1 個）與 `8e78f854`（同 process 第 2 個）第 1 輪指標相同；profile tarball `D:/_bm_phase3/cold/pack2/dsh-basemind-plugin-0.2.0-phaseA3.tgz`，log `D:/_bm_phase3/cold/cold-f.log`。gate 成本 1.4 s（上限 15 s）。
+- isolated integration：本輪前 3 次都失敗；保留 log 的 2 次是 **8 tests／6 pass／2 fail**（313.9 s）與 **8 tests／7 pass／1 fail**（255.7 s），失敗全部是 `test/integration.test.mjs:578` 的 `the BaseMind index did not finish building within 150000 ms`（每次 151.8 s）；第一次執行未保留輸出。
+- 原因確認：那 3 次是**資源競爭**。另一個併行的 Execution context 同時段跑了完整 `npm test`（§11.18(6)），兩個 suite 都在對真實 BaseMind 建索引。等其他 BaseMind 測試結束後重跑：**8/8 pass（48.6 s）**，同一個 index build 只要 **36.1 s**（`D:/_bm_phase3/cold/int4.log`，23:02:57 起跑）。integration 本身沒有 regression；`INDEX_BUILD_TIMEOUT_MS` 仍建議另案處理，因為負載下確實會超過 150 s。
+- 與本 diff 無關的直接證據：`test/integration.test.mjs` 只 import `lib/config.js`、`lib/executable.js`、`lib/mcp-session.js`、`lib/result.js`、`lib/schema.js`、`lib/stdio-client.js`，不 import `index.js`；本次 `lib` 變更只有新增 `coldStartTimeoutMs`，不在 relay／index 路徑上。
+- 另一個併行的 Execution context 同時段跑了完整 `npm test`：**454 tests／442 pass／2 fail／10 skipped**（316.9 s），2 個失敗同樣是這個 index build timeout（§11.18(6)）。本輪未重跑完整 `npm test`：已知失敗就是同一個 timing 問題。
+
+#### (7) 殘留風險／未驗證
+
+1. `agent-first` 與 late-directory 只有 deterministic 覆蓋，沒有真實 session 重現（需要 deployment default 非 project 的 profile）。
+2. 真實冷驗證只跑 Windows、只跑預設 `agent` mode；macOS／Linux 未實跑。
+3. isolated integration 已用安靜重跑 8/8 補上；但它在併行負載下會逾時（本輪 3 次），建議另案提高 `INDEX_BUILD_TIMEOUT_MS`／改 retry（§11.16(6)）。
+4. README 的測試數列（`432 tests／422 pass`）仍是 Phase 2 快照；本輪新增 2 個 case 後全套為 454（452＋2，未重跑全套確認）。屬 3E 文件工作。
+5. 真實冷驗證使用未 commit 的 working tree pack；Phase B 必須從新 commit 重建 tarball 重驗 F1／F2／cold-start。
+
+#### (8) 工作區狀態
+
+- 變更（皆未 commit）：`index.js`、`lib/config.js`、`test/index.test.mjs`、`test/config.test.mjs`、`fixtures/fake-mcp-server.mjs`、`CHANGELOG.md`、`README.md`、`README.zh.md`、本報告。
+- 無 local commit／push／merge；`main` 仍 `2a17e9b`；Desktop profile 未動；業務 repo 只讀。
+- 停點：Phase A 程式與文件完成；integration timing 決策待使用者；經使用者 Review／commit 後才進 Phase B。
+
+### 11.18 2026-11-24 22:40–23:20 Review 後修正（cold-start Findings 1–2）＋文件
+
+> 本節是同一輪工作的另一份紀錄（另一個併行的 Execution context 寫入），與 §11.17 記錄同一批修正；程式結論以 §11.17 為準，本節保留其紅→綠測試與完整 `npm test` 數據。§11.17(2) 之後又補上一個 gate 條件：該 root 必須是此 mode 的候選 root。
+
+#### (1) 依據與範圍
+
+- 依據：[`docs/2026-11-24-basemind-cold-start-fix-review.md`](./2026-11-24-basemind-cold-start-fix-review.md)（Review Agent 的 §3 Findings）。
+- 角色：Execution Agent。處理 **Finding 1、Finding 2、Finding 3（僅文件化）與 Minor 5**。
+- 非目標：Finding 4（`test/integration.test.mjs:578` 的 index build timeout）另案；不改 `INDEX_BUILD_TIMEOUT_MS`、不改 DSH host、**不**把 `coldStartTimeoutMs` 預設值拉高。
+- 本節是 §11.16 的後續；§11.16 的實作與真實驗證仍有效，其「只 gate 第一次 attempt」的描述已被本節取代。
+
+#### (2) Finding 1 — `agent-first` 在 deployment default 失敗後跳過 gate（已修）
+
+- **根因**：gate 只判斷「是否曾有 attempt」（`state.attempted`）。`agent-first` 在 apply 時先嘗試 deployment default，失敗後 `attempted = true`；第一個真實 Agent 的 root 從未被嘗試，卻不再 gate，第一輪照舊在 tools 註冊前釋放。另外，`recheck` 觸發的第二個 attempt 不在 `state.initPromise` 內，`waitForPrimary()` 只等得到失敗的那個 attempt。
+- **修正**（[`index.js`](../index.js)）：
+  - `state.attempted` → `state.attemptedRoots`（lower-case 集合）；gate 改為「`state.initPromise` 存在」或「目前 Agent 的 `preferredRoot` 還沒被嘗試過」。同一 root 重複失敗仍不 gate，不會拖慢每個新 session。
+  - `ensurePrimary()` 的 `recheck` 改為**同一個 `initPromise` 內**的候選 root 迴圈：新的 root 抵達後的重試仍屬於 host 正在 await 的那個 promise，`waitForPrimary()` 觀察得到。
+  - `scheduleRetry()` 的 timer 改走 `startPrimary()`，retry attempt 也有 `initPromise`，可被等待。
+- **回歸測試**：`test/index.test.mjs` 新增「agent-first still gates the first turn after the deployment default failed」：deployment default 先失敗、relay 慢 500 ms，`await ctx.emit('agent/created')` resolve 後**立即**斷言 tools 與 `mcp:basemind` section 存在。修正前紅（2 ms 就 resolve，無 tools）、修正後綠（633 ms）。
+
+#### (3) Finding 2 — directory timeout 永久放棄 adoption（已修）
+
+- **根因**：`settleWithin()` 逾時後只 `scheduleRetry()`；`discoveryRoot: 'agent'` 下沒有 root，retry 的 `ensurePrimary()` 直接 return，晚到的 directory promise 無人觀察，該 session 到下次 Agent 建立前都沒有工具。
+- **修正**（`index.js`）：新增 `adoptLateDirectory()`；逾時分支對 `directoryPromise` 掛一個 non-blocking continuation，settle 後在 `!disposed && !ready && !blocked` 時設 `preferredRoot`、`retryIndex = 0`，若 `initializing` 則設 `recheck`，否則 `startPrimary()`。第一輪仍在上限內放行。
+- **回歸測試**：新增「a working directory that arrives after the cold-start budget still starts the relay」：`workingDirectory.ensure` 延遲 600 ms、`coldStartTimeoutMs: 150`；creation 在 2 s 內返回且當下無工具，之後背景補上工具，`admin status` 的 `root` 為該 Agent 目錄。修正前紅（5 s 等待逾時、無工具）、修正後綠（1.36 s）。
+
+#### (4) Finding 3 — cold managed install 大於預設預算（文件化，未改預設）
+
+- **決策**：**不**把 `coldStartTimeoutMs` 由 15 s 拉高（Review 已指出把 agent creation 擋到 55 s 不是好方案，也會拖慢每個新 session）。把限制寫進 README（en／zh）與 CHANGELOG。
+- **使用者可見行為**：全新 `binaryDownload` 安裝（下載 75–102 MB，實測 13.5–55.7 s）若超過預算，第一次 session 的第一輪仍在沒有 BaseMind 工具下執行；工具在背景安裝／handshake 完成後可用。後續 session 使用暖快取，只等 handshake（實測 creation 51–694 ms）。
+- **未驗證**：本次**沒有**在全新 cache 冷安裝下重跑真實 session 驗證上述文字；它取自既有的 managed 冷安裝實測（13.5–55.7 s）與 15 s 預算的算術關係。
+
+#### (5) Minor 5 — 文件
+
+- [`README.md`](../README.md)／[`README.zh.md`](../README.zh.md) 新增 §5.3「新 session 的第一輪」：`coldStartTimeoutMs` 預設／停用方式／上限 120000、預算涵蓋範圍（`workingDirectory.ensure`、handshake、`tools/list`）、late directory adoption、first-ever managed install 限制。
+- [`CHANGELOG.md`](../CHANGELOG.md)：`Fixed` 的冷啟動條目補充「每個 discovery root 第一次嘗試才 gate」、late adoption，以及 first-ever install 的限制。
+- 本報告頂部 §0.1 指標與 §10 指標都加上 §11.16／§11.17；§11.16 (6) 的殘留風險 3 標註已由本節修正。
+
+#### (6) 驗證（本次實跑；Windows x64、Node 24.20.0）
+
+| 命令 | 結果 |
+| --- | --- |
+| `node --test test/index.test.mjs test/config.test.mjs` | **53/53 pass**（9.2 s；含 2 個新 case） |
+| `npm run check` | syntax ok（20 files）＋bundle manifest ok |
+| `npm test`（完整、並行） | **454 tests／442 pass／2 fail／10 skipped**（316.9 s）；2 個失敗都是 `test/integration.test.mjs:578` 的 `the BaseMind index did not finish building within 150000 ms`（既有 flake，Finding 4，與本次 diff 無關） |
+
+- 新 case 的紅→綠順序已實跑：修正前 2 個新 case 皆 fail（2 ms 就 resolve／5 s 等待逾時），修正後皆 pass。
+- **未重跑** isolated integration（`test/integration.test.mjs` 不 import `apply()`、不觸發 `agent/created`，本次未觸及）；報告沿用 §11.16 的 isolated 8/8 與 Review 的獨立重跑。
+
+#### (7) 殘留風險／未驗證
+
+1. Finding 4 未處理：`npm test` 仍可能因真實 BaseMind index build 超時而 flake。
+2. 只驗 **Windows**；macOS／Linux 的 cold start 與 late directory 行為未實跑。
+3. Finding 1／2 的證據是單元層 fake context（含 slow relay、slow cwd），**未**在真實 `agent-first` profile 或真實遠端 cwd 重現。
+4. Finding 3 的文件敘述未以全新 cache 冷安裝實測。
+5. 未 commit、未 push；`main` 仍 `2a17e9b`；工作區修改範圍見 §11.16 (7) 加上本節的 README／CHANGELOG／報告。
 
 

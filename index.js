@@ -9,7 +9,9 @@
  *   - global tools   `mcp__<serverName>__<tool>`
  *   - one MCP resource provider named `serverName`
  *   - one system-prompt section carrying BaseMind's server instructions
- *   - one `agent/created` listener that retries a failed background startup
+ *   - one `agent/created` listener that adopts a new Agent's root, waits
+ *     (bounded) for the relay whose tools it serves, and retries a failed
+ *     background startup
  *
  * @module dsh-basemind-plugin
  */
@@ -80,6 +82,10 @@ export function apply(ctx, config) {
     syncChain: Promise.resolve(),
     retryIndex: 0,
     retryTimer: undefined,
+    /** In-flight primary initialization, so a second creation can wait on it. */
+    initPromise: undefined,
+    /** Every discovery root that already had an attempt, lower-cased. */
+    attemptedRoots: new Set(),
     /** The verified binary selection shared by the relay, CLI tool and status. */
     selection: undefined,
     skillsRegistered: false,
@@ -459,9 +465,85 @@ export function apply(ctx, config) {
     state.retryIndex += 1
     state.retryTimer = setTimeout(() => {
       state.retryTimer = undefined
-      void ensurePrimary()
+      // Through `startPrimary`, so an Agent created while the retry runs can still be
+      // released only after that attempt settles.
+      void startPrimary()
     }, delay)
     state.retryTimer.unref?.()
+  }
+
+  /** Start (or join) one primary initialization attempt. */
+  function startPrimary() {
+    if (state.initPromise !== undefined) return state.initPromise
+    if (state.disposed || state.ready || state.blocked || state.initializing) return undefined
+    const promise = ensurePrimary().finally(() => {
+      if (state.initPromise === promise) state.initPromise = undefined
+    })
+    state.initPromise = promise
+    return promise
+  }
+
+  /**
+   * Settle `promise` within `ms`, treating a timeout or an aborted caller as
+   * "did not settle".
+   * @returns `{ ok: true, value }` when it settled, `{ ok: false, error? }` otherwise.
+   */
+  function settleWithin(promise, ms, signal) {
+    return new Promise((resolve) => {
+      let done = false
+      const finish = (outcome) => {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        signal?.removeEventListener?.('abort', onAbort)
+        resolve(outcome)
+      }
+      const onAbort = () => finish({ ok: false })
+      const timer = setTimeout(() => finish({ ok: false }), Math.max(1, ms))
+      timer.unref?.()
+      signal?.addEventListener?.('abort', onAbort, { once: true })
+      promise.then(
+        (value) => finish({ ok: true, value }),
+        (error) => finish({ ok: false, error }),
+      )
+    })
+  }
+
+  /**
+   * Wait for the relay that serves the tools, prompt sections and skills before
+   * this Agent's queued work is released, so its first turn is assembled with
+   * them.
+   *
+   * The host awaits serial `agent/created` listeners before releasing queued
+   * work, but initialization used to be left in the background: the first turn
+   * raced the MCP handshake and lost, showing no BaseMind tools, no bootstrap
+   * section and no vendored skills.
+   *
+   * The wait is bounded. A timeout, a failed or aborted attempt logs one
+   * diagnostic and lets the turn proceed exactly as it did before the fix.
+   */
+  async function waitForPrimary(deadline, signal) {
+    if (settings.coldStartTimeoutMs <= 0) return
+    let timedOut = false
+    while (state.initPromise !== undefined && !state.ready && !state.blocked && !state.disposed) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) {
+        timedOut = true
+        break
+      }
+      const settled = await settleWithin(state.initPromise, remaining, signal)
+      if (!settled.ok) {
+        timedOut = true
+        break
+      }
+    }
+    if (state.ready || state.blocked || state.disposed || signal?.aborted === true) return
+    // A settled attempt that failed already logged its own startup warning; only
+    // an attempt that outlived the budget needs this one.
+    if (!timedOut) return
+    logger?.warn?.(
+      `[dsh-basemind-plugin] BaseMind was not ready within ${String(settings.coldStartTimeoutMs)} ms; the first turn continues without its tools, instructions and skills`,
+    )
   }
 
   /** Every root worth trying for discovery, most specific first. */
@@ -550,19 +632,40 @@ export function apply(ctx, config) {
     if (candidateRoots().length === 0) return
     state.initializing = true
     try {
-      for (const root of candidateRoots()) {
-        if (state.disposed || state.ready || state.blocked) return
-        const outcome = await tryInitialize(root)
-        if (outcome === 'ready' || outcome === 'fatal') return
+      // A newer root can arrive mid-attempt. Re-running the candidate loop here keeps
+      // that second attempt inside the same promise, so the Agent that brought the root
+      // keeps awaiting it instead of being released against the failed attempt.
+      for (;;) {
+        state.recheck = false
+        for (const root of candidateRoots()) {
+          if (state.disposed || state.ready || state.blocked) return
+          state.attemptedRoots.add(root.toLowerCase())
+          const outcome = await tryInitialize(root)
+          if (outcome === 'ready' || outcome === 'fatal') return
+        }
+        scheduleRetry()
+        if (!state.recheck || state.disposed || state.ready || state.blocked) return
       }
-      scheduleRetry()
     } finally {
       state.initializing = false
-      if (state.recheck) {
-        state.recheck = false
-        void ensurePrimary()
-      }
     }
+  }
+
+  /**
+   * Adopt a working directory that settled after the cold-start budget expired, so a
+   * slow or remote `workingDirectory.ensure` costs the first turn its tools but not the
+   * whole session.
+   */
+  function adoptLateDirectory(directory) {
+    if (state.disposed || state.ready || state.blocked) return
+    if (typeof directory !== 'string' || directory === '') return
+    state.preferredRoot = directory
+    state.retryIndex = 0
+    if (state.initializing) {
+      state.recheck = true
+      return
+    }
+    void startPrimary()
   }
 
   /**
@@ -570,10 +673,31 @@ export function apply(ctx, config) {
    * discovery root. BaseMind refuses a root that is not a project, and the
    * deployment fallback directory is often exactly such a root.
    */
-  async function adoptAgentRoot(agent) {
+  async function adoptAgentRoot(agent, signal) {
     if (state.disposed || state.ready || state.blocked) return
+    const budget = settings.coldStartTimeoutMs
+    const deadline = budget > 0 ? Date.now() + budget : 0
+    const directoryPromise = ctx.workingDirectory.ensure(agent, signal ?? initController.signal)
+    let directory
     try {
-      const directory = await ctx.workingDirectory.ensure(agent, initController.signal)
+      if (budget > 0) {
+        const resolved = await settleWithin(directoryPromise, budget, signal)
+        if (!resolved.ok) {
+          if (resolved.error !== undefined) {
+            logger?.debug?.(`[dsh-basemind-plugin] could not resolve an Agent working directory: ${message(resolved.error)}`)
+          } else {
+            logger?.debug?.('[dsh-basemind-plugin] resolving the Agent working directory did not settle in time')
+            // Bounding the first turn must not abandon the root: when the directory
+            // arrives later, this Agent still gets its relay in the background.
+            directoryPromise.then(adoptLateDirectory, () => {})
+          }
+          scheduleRetry()
+          return
+        }
+        directory = resolved.value
+      } else {
+        directory = await directoryPromise
+      }
       if (typeof directory === 'string' && directory !== '') {
         state.preferredRoot = directory
         state.retryIndex = 0
@@ -583,11 +707,25 @@ export function apply(ctx, config) {
       scheduleRetry()
       return
     }
+    // A root's first attempt gates the first turn. After that the background retry
+    // keeps trying on its own backoff, because blocking every new Agent on a repeated
+    // failure would delay every session instead of helping one. A failed attempt for a
+    // *different* root (`agent-first` against the deployment default) must not count, and
+    // a root this mode would never try (`default` ignores Agent directories) cannot
+    // justify a wait either: that attempt could not produce this session's tools.
+    const preferred = state.preferredRoot
+    const planned =
+      typeof preferred === 'string' &&
+      preferred !== '' &&
+      candidateRoots().some((root) => root.toLowerCase() === preferred.toLowerCase())
+    const rootUnseen = planned && !state.attemptedRoots.has(preferred.toLowerCase())
+    const gate = budget > 0 && (state.initPromise !== undefined || rootUnseen)
     if (state.initializing) {
       state.recheck = true
-      return
+    } else if (!state.ready && !state.blocked && !state.disposed) {
+      void startPrimary()
     }
-    await ensurePrimary()
+    if (gate) await waitForPrimary(deadline, signal)
   }
 
   /**
@@ -725,10 +863,13 @@ export function apply(ctx, config) {
         scheduleRetry()
         return
       }
-      void adoptAgentRoot(agent)
+      // The host awaits serial `agent/created` listeners before releasing
+      // queued work; returning this promise is what lets the first turn see the
+      // relay's tools and prompt sections instead of racing the handshake.
+      return adoptAgentRoot(agent, payload?.signal)
     })
     registerStatusCommand()
-    void ensurePrimary()
+    void startPrimary()
     return async () => {
       try {
         retryListenerDispose?.()

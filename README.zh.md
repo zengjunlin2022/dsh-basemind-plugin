@@ -149,6 +149,15 @@ BaseMind 的 MCP resources（`basemind://status`，以及 `basemind://outline/{p
 
 工具名稱已變更：`mcp__basemind__code`、`__git`、`__memory`、`__admin`、`__graph`、`__web`、`__shell`、`__workspace`、`__agents` 已不存在，任何寫死這些名稱的權限設定、preset prompt 或腳本都必須更新。插件不會代為改寫 preset 或權限檔。
 
+### 5.3 新 session 的第一輪
+
+新的 Agent 要等 BaseMind relay 回應之後才會放行第一個 prompt，因此第一輪就已經帶有工具、bootstrap section 與 skills catalog。等待有上限，由 `coldStartTimeoutMs` 控制（預設 15000 ms；`0` 停用等待；可接受最大值 120000）。超過上限後，第一輪照舊在沒有 BaseMind 的情況下繼續，背景 attempt 完成時仍會補註冊工具。
+
+調整時要注意兩件事：
+
+- 預算涵蓋 `workingDirectory.ensure`、relay handshake 與 `tools/list`。工作目錄很慢或位於遠端而錯過預算時，該目錄仍會在背景被採用，這個 session 只是晚一輪才有工具，不會失去它們。
+- `binaryDownload` 的全新 managed 安裝第一次啟動可能要下載 75–102 MB、花 13.5–55.7 s。除非把 `coldStartTimeoutMs` 相應調高，那第一次 session 的第一輪仍可能在沒有 BaseMind 工具下執行；後續 session 重用暖快取，只等 handshake。
+
 ## 6. 本機優先的 Binary 選擇
 
 每次啟動時，插件依下列順序選一次 binary（同一 process 內固定）：

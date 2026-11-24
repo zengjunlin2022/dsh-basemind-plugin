@@ -112,7 +112,13 @@ function adapt(child) {
  * A cordis-shaped context with the DSH surfaces the plugin uses, backed by the
  * real subprocess API shape and a scripted MCP server process.
  */
-function createFakeContext({ defaultDirectory = ROOT_A, launchable = true, failRoots = [], rejectRegistration = false } = {}) {
+function createFakeContext({
+  defaultDirectory = ROOT_A,
+  launchable = true,
+  failRoots = [],
+  rejectRegistration = false,
+  ensureDelayMs = 0,
+} = {}) {
   const tools = new Map()
   const commands = new Map()
   const skillProviders = new Set()
@@ -164,6 +170,9 @@ function createFakeContext({ defaultDirectory = ROOT_A, launchable = true, failR
     workingDirectory: {
       defaultDirectory,
       async ensure() {
+        // A slow or remote cwd: the plugin must bound the first turn without losing
+        // the directory that arrives late.
+        if (ensureDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, ensureDelayMs))
         return current.directory
       },
     },
@@ -218,8 +227,13 @@ function createFakeContext({ defaultDirectory = ROOT_A, launchable = true, failR
         if (index >= 0) currentList.splice(index, 1)
       }
     },
+    // Cordis dispatches `ctx.serial(...)` by awaiting each listener's return
+    // value; mirror that so a creation-listener test can await the same promise
+    // the host awaits. Synchronous throws still surface from `emit` itself.
     emit(event, ...args) {
-      for (const listener of [...(listeners.get(event) ?? [])]) listener(...args)
+      const results = []
+      for (const listener of [...(listeners.get(event) ?? [])]) results.push(listener(...args))
+      return Promise.all(results)
     },
     effect(callback) {
       const cleanup = callback()
@@ -394,6 +408,159 @@ test('an agent creation retries a failed startup immediately', async (t) => {
   ctx.emit('agent/created', { agent: { id: 'agent-2' } })
   await waitFor(() => ctx.warnings.length > before, { label: 'the retry attempt', timeoutMs: 5_000 })
   assert.match(ctx.warnings[ctx.warnings.length - 1], /startup failed/)
+})
+
+test('a new Agent waits, bounded, for a slow relay before its first turn is released', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({
+    discoveryRoot: 'agent',
+    coldStartTimeoutMs: 10_000,
+    env: { FAKE_MCP_INIT_DELAY_MS: '500' },
+  }))
+  ctx.setDirectory(ROOT_A)
+  assert.equal(ctx.tools.schemas().length, 0, 'nothing starts before a session exists')
+
+  const started = Date.now()
+  const creating = ctx.emit('agent/created', { agent: { id: 'agent-cold' } })
+  assert.equal(ctx.tools.get('mcp__basemind__admin'), undefined, 'the handshake is still in flight')
+  await creating
+  const elapsed = Date.now() - started
+
+  assert.ok(elapsed >= 300, `creation waited for the relay (${String(elapsed)} ms)`)
+  assert.ok(ctx.tools.get('mcp__basemind__admin'), 'the tools exist once creation resolves')
+  assert.ok(
+    ctx.sections.some((section) => String(section.name).startsWith('mcp:basemind')),
+    'the instructions section exists once creation resolves',
+  )
+  assert.equal(ctx.warnings.some((message) => /not ready within/.test(message)), false)
+})
+
+test('a second Agent created during the handshake waits for the same relay', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({
+    discoveryRoot: 'agent',
+    coldStartTimeoutMs: 10_000,
+    env: { FAKE_MCP_INIT_DELAY_MS: '500' },
+  }))
+  ctx.setDirectory(ROOT_A)
+
+  const started = Date.now()
+  const first = ctx.emit('agent/created', { agent: { id: 'agent-cold-1' } })
+  const second = ctx.emit('agent/created', { agent: { id: 'agent-cold-2' } })
+  await Promise.all([first, second])
+
+  assert.ok(Date.now() - started >= 300, 'the second creation joins the in-flight relay')
+  assert.ok(ctx.tools.get('mcp__basemind__admin'))
+  assert.equal(
+    ctx.spawned.filter((handle) => handle.stdin !== null).length,
+    1,
+    'one relay serves both creations',
+  )
+})
+
+test('a relay that misses the cold-start budget never hangs the first turn', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({
+    discoveryRoot: 'agent',
+    coldStartTimeoutMs: 200,
+    env: { FAKE_MCP_INIT_DELAY_MS: '1500' },
+  }))
+  ctx.setDirectory(ROOT_A)
+
+  const started = Date.now()
+  await ctx.emit('agent/created', { agent: { id: 'agent-slow' } })
+  const elapsed = Date.now() - started
+
+  assert.ok(elapsed < 3_000, `creation returned inside the budget (${String(elapsed)} ms)`)
+  assert.match(ctx.warnings.join('\n'), /not ready within 200 ms/)
+  // The attempt keeps running in the background and still registers one generation.
+  await waitFor(() => ctx.tools.get('mcp__basemind__admin') !== undefined, { label: 'the late tools' })
+  const names = ctx.tools.schemas().map((definition) => definition.name)
+  assert.equal(new Set(names).size, names.length, 'no tool is registered twice')
+  assert.equal(ctx.warnings.some((message) => /tool registration failed/.test(message)), false)
+})
+
+test('coldStartTimeoutMs: 0 keeps the previous non-blocking creation behaviour', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({
+    discoveryRoot: 'agent',
+    coldStartTimeoutMs: 0,
+    env: { FAKE_MCP_INIT_DELAY_MS: '600' },
+  }))
+  ctx.setDirectory(ROOT_A)
+
+  const started = Date.now()
+  await ctx.emit('agent/created', { agent: { id: 'agent-ungated' } })
+  assert.ok(Date.now() - started < 400, 'creation is not gated when the budget is off')
+  await waitFor(() => ctx.tools.get('mcp__basemind__admin') !== undefined, { label: 'the background tools' })
+})
+
+test('a creation with BaseMind unavailable returns promptly with a diagnostic', async (t) => {
+  const ctx = createFakeContext({ launchable: false })
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ discoveryRoot: 'agent', coldStartTimeoutMs: 15_000 }))
+  ctx.setDirectory(ROOT_A)
+
+  const started = Date.now()
+  await ctx.emit('agent/created', { agent: { id: 'agent-unavailable' } })
+  const elapsed = Date.now() - started
+
+  assert.ok(elapsed < 5_000, `creation did not wait for the full budget (${String(elapsed)} ms)`)
+  assert.match(ctx.warnings.join('\n'), /BaseMind startup failed/)
+  assert.equal(ctx.tools.schemas().length, 0)
+  assert.equal(ctx.sections.length, 0)
+})
+
+test('agent-first still gates the first turn after the deployment default failed', async (t) => {
+  // `agent-first` tries the deployment default at apply time. When that directory is not
+  // a project the eager attempt fails before any session exists, so the gate must key on
+  // the Agent's own root (not "an attempt already happened") or the original gap returns.
+  const ctx = createFakeContext({ defaultDirectory: ROOT_B, failRoots: [ROOT_B] })
+  ctx.setDirectory(ROOT_A)
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ env: { FAKE_MCP_INIT_DELAY_MS: '500' } }))
+  await waitFor(() => ctx.warnings.some((message) => /startup failed/.test(message)), {
+    label: 'the deployment-default failure',
+  })
+  assert.equal(ctx.tools.schemas().length, 0)
+
+  const started = Date.now()
+  await ctx.emit('agent/created', { agent: { id: 'agent-first-cold' } })
+  const elapsed = Date.now() - started
+
+  assert.ok(elapsed >= 300, `creation waited for the Agent root relay (${String(elapsed)} ms)`)
+  assert.ok(ctx.tools.get('mcp__basemind__admin'), 'the tools exist once creation resolves')
+  assert.ok(
+    ctx.sections.some((section) => String(section.name).startsWith('mcp:basemind')),
+    'the instructions section exists once creation resolves',
+  )
+})
+
+test('a working directory that arrives after the cold-start budget still starts the relay', async (t) => {
+  // A slow or remote cwd may only bound the first turn, never abandon the root: giving up
+  // adoption would leave the whole session without BaseMind until another Agent appears.
+  const ctx = createFakeContext({ ensureDelayMs: 600 })
+  ctx.setDirectory(ROOT_A)
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ discoveryRoot: 'agent', coldStartTimeoutMs: 150 }))
+
+  const started = Date.now()
+  await ctx.emit('agent/created', { agent: { id: 'agent-slow-directory' } })
+  const elapsed = Date.now() - started
+
+  assert.ok(elapsed < 2_000, `creation returned inside the budget (${String(elapsed)} ms)`)
+  assert.equal(ctx.tools.schemas().length, 0, 'the working directory is not known yet')
+
+  await waitFor(() => ctx.tools.get('mcp__basemind__admin') !== undefined, {
+    label: 'the late directory adoption',
+    timeoutMs: 5_000,
+  })
+  const status = await call(ctx, 'mcp__basemind__admin', { mode: 'status' })
+  assert.equal(JSON.parse(status.text).root, ROOT_A)
 })
 
 test('adopts an Agent working directory when the deployment default is not a usable root', async (t) => {

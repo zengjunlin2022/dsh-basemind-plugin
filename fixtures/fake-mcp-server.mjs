@@ -14,6 +14,8 @@
  *   FAKE_MCP_IGNORE_STDIN_CLOSE when set, the server keeps running after stdin
  *                             ends (BaseMind's real behaviour; proves teardown
  *                             must terminate the child)
+ *   FAKE_MCP_INIT_DELAY_MS    delay the `initialize` answer, modelling a relay
+ *                             whose handshake outlasts a session creation
  *
  * Do not import this file: it is a subprocess fixture.
  */
@@ -26,6 +28,7 @@ const rejectVersions = new Set(
     .filter((value) => value !== ''),
 )
 const paginate = (process.env.FAKE_MCP_PAGE_TOKENS ?? '') !== ''
+const initDelayMs = Number(process.env.FAKE_MCP_INIT_DELAY_MS ?? 0) > 0 ? Number(process.env.FAKE_MCP_INIT_DELAY_MS) : 0
 
 const profile = (process.env.FAKE_MCP_PROFILE ?? '').trim()
 
@@ -258,12 +261,16 @@ const handle = (message) => {
         fail(id, -32602, `unsupported protocol version ${String(requested)}`)
         return
       }
-      reply(id, {
-        protocolVersion: requested ?? '2025-06-18',
-        capabilities: { tools: {}, resources: {}, prompts: {} },
-        serverInfo: { name: 'fake-basemind', version: '0.0.0-fake' },
-        instructions: 'FAKE BASEMIND INSTRUCTIONS: prefer the fake code tool.',
-      })
+      {
+        const result = {
+          protocolVersion: requested ?? '2025-06-18',
+          capabilities: { tools: {}, resources: {}, prompts: {} },
+          serverInfo: { name: 'fake-basemind', version: '0.0.0-fake' },
+          instructions: 'FAKE BASEMIND INSTRUCTIONS: prefer the fake code tool.',
+        }
+        if (initDelayMs > 0) setTimeout(() => reply(id, result), initDelayMs)
+        else reply(id, result)
+      }
       return
     }
     case 'tools/list':

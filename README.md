@@ -149,6 +149,15 @@ BaseMind's MCP resources (`basemind://status`, plus the `basemind://outline/{pat
 
 Tool names changed: `mcp__basemind__code`, `__git`, `__memory`, `__admin`, `__graph`, `__web`, `__shell`, `__workspace` and `__agents` no longer exist, so any permission entry, preset prompt or script that names them must be updated. The plugin does not rewrite presets or permission files.
 
+### 5.3 The first turn of a new session
+
+A new Agent is released to its first prompt only after the BaseMind relay has answered, so that turn already carries the tools, the bootstrap section and the skills catalog. The wait is bounded by `coldStartTimeoutMs` (default 15000 ms; `0` disables the wait; the accepted maximum is 120000). Past the budget the turn proceeds without BaseMind exactly as before, and the background attempt still registers the tools as soon as it finishes.
+
+Two details matter when you tune it:
+
+- The budget covers `workingDirectory.ensure`, the relay handshake and `tools/list`. A slow or remote working directory that misses it is still adopted in the background, so that session gets its tools on a later turn instead of losing them.
+- The first start after a fresh `binaryDownload` managed install may spend 13.5–55.7 s downloading 75–102 MB. Unless `coldStartTimeoutMs` is raised accordingly, that first session's first turn can still run without BaseMind tools; later sessions reuse the warm cache and wait only for the handshake.
+
 ## 6. Local-first binary selection
 
 On every start the plugin performs one selection per process, in this order:
