@@ -3,3 +3,6 @@
       name: 'dsh-basemind-plugin'
       config:
         serverName: basemind
+        # Explicit and auditable: the plugin may write its own managed cache and
+        # download the pinned BaseMind release when no local binary is compatible.
+        binaryDownload: true

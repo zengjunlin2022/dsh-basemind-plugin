@@ -38,7 +38,7 @@ npm view dsh-basemind-plugin version
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`，宣告於 `engines.dsh`，DSH 會在安裝與啟動時檢查。本版本已於 `0.2.1-rc.5` 實測。 |
 | Node.js | `>= 24.20.0`（宣告於 `engines`，並以 Volta 固定）。插件是純 ESM，沒有依賴。 |
-| BaseMind | 任何版本。插件不鎖定也不設版本閘門：它提供的工具就是執行中的 `basemind serve` 透過 `tools/list` 宣告的內容。本版本已於 BaseMind **0.34.0** 實測；0.29.3–0.33.0 以較舊的 mode 型工具提供同樣的程式碼理解能力（另有 `graph`、`web`、`shell`、`workspace`），0.34.0 才改為 verb tools（見 §5.2）。 |
+| BaseMind | **0.34.0**，固定於 `lib/upstream.js`，並由 `binaryPolicy: 'exact'`（預設，§8）強制：本機 `basemind` 的 major.minor.patch 不符時，會在日誌與 `/basemind-status` 說明後跳過，不會拿來執行；本機找不到相容 binary 時，`binaryDownload: true`（預設，§7）會從 GitHub 安裝這個固定的目標版本。`binaryPolicy: 'minor'` 與 `'any'` 是逃生門；`'any'` 只保留 MCP bridge，Skills、CLI 工具與版本提示全部關閉。已於 Windows 搭配 BaseMind **0.34.0** 實測；Linux 與 macOS 由 `.github/workflows/compat.yml` 的 CI 補證（尚未執行）。0.29.3–0.33.0 提供的是 mode 型工具而非 verb tools（見 §5.2）。 |
 
 ## 4. 安裝
 
@@ -135,7 +135,7 @@ basemind --version
 | `mcp__basemind__index_status`、`mcp__basemind__index_rescan` | 索引狀態與重新掃描（`{}` 代表整個工作區） |
 | `mcp__basemind__agent_inbox`、`mcp__basemind__agent_post`、`mcp__basemind__agent_threads` | agent 通訊（僅 comms build） |
 
-工具清單取自執行中的 BaseMind，較新版本可能提供更多。
+工具清單取自執行中的 BaseMind。預設 `binaryPolicy: 'exact'` 下，該 binary 必須是固定的 **0.34.0**（§8）；其他版本只有在 `minor` / `any` 逃生門下才會執行，也只有在那時，較新版本才可能提供不同的工具集。
 
 部分工具以行導向文字或 [TOON](https://toonformat.dev) 回應，而非 JSON（`code_outline`、`code_grep`、`find_files`、`git_diff`）。插件只投影伺服器送來的文字，不做解析；0.34.0 每個結果的機器可讀形式都在 MCP `structuredContent`，插件會將它保留在 result envelope 中。請不要對文字區塊做 `JSON.parse`。
 
@@ -148,6 +148,92 @@ BaseMind 的 MCP resources（`basemind://status`，以及 `basemind://outline/{p
 3. 重開每個 DSH 工作階段——插件會在新的 relay 上重新發現工具清單。
 
 工具名稱已變更：`mcp__basemind__code`、`__git`、`__memory`、`__admin`、`__graph`、`__web`、`__shell`、`__workspace`、`__agents` 已不存在，任何寫死這些名稱的權限設定、preset prompt 或腳本都必須更新。插件不會代為改寫 preset 或權限檔。
+
+## 6. 本機優先的 Binary 選擇
+
+每次啟動時，插件依下列順序選一次 binary（同一 process 內固定）：
+
+1. `command` 非預設 `basemind` 時（絕對路徑原樣使用）。
+2. `BASEMIND_BIN`（僅當 `command` 仍是預設值）。
+3. `PATH` 上的 `basemind`。
+4. 目標版本與平台的 managed 快取。
+5. 官方 GitHub Release 的目標版本（僅當 `binaryDownload: true`）。
+6. `npx -y <npxSpec>`：legacy 路徑，僅當 `autoProvision: true` 且以上全部失敗。
+
+每個候選都必須先通過版本政策才會被採用。本機版本不符時，日誌與 `/basemind-status` 會說明，然後繼續下一個候選；`binaryFallback: false` 會讓不符的顯式 binary 直接停下，而不是往下掉。
+
+選型在同一個 process 內固定：所有 relay、CLI 呼叫與診斷共用同一個 binary，工作階段切換工作目錄不會重新選型。本機命中或有效快取命中都是 0 次網路；只會寫入插件自管快取（每個 workspace 的 state.json、adopt 快取時的 install.json）。
+
+## 7. Managed Binary 自動下載（預設開啟）
+
+`binaryDownload: true` 是預設值，並在 `cordis.patch.yml` 顯式宣告。本機沒有相容 binary 時，插件會從 `github.com/Goldziher/basemind/releases/download/v<version>/` 下載目標 asset、用 `basemind_<version>_checksums.txt` 驗證 SHA256、以純 Node 解開唯一的預期 binary（tar.gz 或 zip；拒絕路徑穿越、symlink、hardlink），再原子安裝。
+
+- 只寫入 `$DSH_HOME/cache/dsh-basemind-plugin/`。
+- 不碰 BaseMind data home、專案、npm 安裝目錄或 `PATH`，也不執行任何安裝程式。
+- 失敗即封閉：未校驗的 binary 永不執行，插件維持沒有工具，並由 `/basemind-status` 與一行日誌說明原因。
+- 重試有上限（最多再加 2 次）；同一目標連續失敗會冷卻 10 分鐘。
+- `binaryDownload: false` 可完全禁止。
+
+## 8. 版本匹配規則
+
+`binaryPolicy` 決定「找到的版本」是否算與目標上游版本（目前 `0.34.0`）相容：
+
+| 值 | 接受 | 說明 |
+| --- | --- | --- |
+| `exact`（預設） | major.minor.patch 完全相同 | 拒絕 prerelease |
+| `minor` | 同一 major.minor | 忽略 patch、仍拒絕 prerelease；請先自行驗證該 patch |
+| `any` | 任何可執行檔 | 只保留 MCP bridge：Skills、CLI 工具與版本提示全部關閉 |
+
+若你卡在 `0.34.1`，建議等插件更新到下一個 pin（Skills 文本與 CLI allowlist 會一起驗證），或設 `binaryPolicy: 'minor'` 並自行承擔「Skills 未對該 patch 驗證」的風險。
+
+## 9. 快取、離線與自訂 Binary
+
+- 快取：`$DSH_HOME/cache/dsh-basemind-plugin/managed-binaries/<version>/<platform>/`，platform 為 `windows-x64`、`linux-x64`、`linux-arm64`、`darwin-arm64`；`install.json` 記安裝資訊、`state.json` 記失敗狀態、`download/` 是暫存。`$DSH_HOME` 優先取 `DSH_HOME`，否則 `~/.dsh`。
+- 重用：有效快取命中時完全 0 次網路。刪除快取目錄是安全的，下次啟動會重新選型。
+- 離線：`binaryDownload: false` 禁止所有網路請求。可把相容 binary 放進 `PATH`、用 `command`／`BASEMIND_BIN` 指向它，或預先放入快取。
+- 自訂 binary：設 `command: "C:\\tools\\basemind\\basemind.exe"` 或 `BASEMIND_BIN`。`binaryFallback: false` 會讓不符的 pin 成為可診斷的硬停點，而不是靜默換掉。
+
+## 10. 確認本機 Binary：`/basemind-status`
+
+在輸入框打 `/basemind-status`。它是 human command：不經模型、不耗 token。輸出會說明本機是否存在 binary、路徑、找到與期望版本、是否相容、來源、快取狀態、下載狀態，以及兩三個可行的下一步。
+
+```
+BaseMind status - dsh-basemind-plugin 0.2.0
+  expected upstream : 0.34.0 (exact)
+  platform          : windows-x64 (x86_64-pc-windows-msvc)
+  present           : yes
+  path              : ...\Programs\basemind\basemind.exe
+  found             : 0.33.0
+  compatible        : NO - minor mismatch (0.33 vs 0.34)
+  source            : path
+  managed cache     : empty (...\.dsh\cache\dsh-basemind-plugin\managed-binaries)
+  download          : enabled (binaryDownload=true)
+
+  What to do:
+    - install BaseMind 0.34.0 and point command / BASEMIND_BIN at it, or
+    - restart DSH later so the next start retries after a short cooldown, or
+    - set binaryPolicy: "minor" to accept 0.34.x only after you have verified it.
+```
+
+它不是設定頁，也不會在 Settings 或 Plugins 介面新增狀態卡片。
+
+## 11. 官方 Skills
+
+套件內含 10 個官方 BaseMind Skills（`basemind`、`basemind-cli`、`basemind-code-search`、`basemind-comms`、`basemind-doctor`、`basemind-documents`、`basemind-git-history`、`basemind-multi-agent-room`、`basemind-scan`、`basemind-stats`），以 rank 1000 經 `ctx.skills.registerProvider()` 註冊。專案內、`~/.dsh/skills` 或其他插件的同名 skill 勝出；只有在沒有其他來源提供該名稱時，才會用到插件的副本。catalog 只帶名稱與描述，正文在模型開啟 skill 時才載入。`skills: false` 可停用。
+
+DSH 對上游文字的適配只存在 `skills/.dsh-adapt.json`；用 `npm run sync:skills` 重新產生、`npm run check:skills` 驗證。不要手改 `skills/**`。
+
+## 12. MCP 工具與 CLI 橋接
+
+所有 MCP 工具都來自執行中的 BaseMind，工具集跟著 binary 走。除此之外插件註冊 `mcp__basemind__cli`：純 argv、唯讀、不經 shell，與 relay 用同一個已校驗 binary。它補的是沒有 MCP 工具的能力（`code explain`、`code impact`、`code deadcode`、`code cycles`、`code migration check`、`overview`、`git hotspots`、`doctor`、`status`、`upgrade --plan`、`manual`）。破壞性動詞（`scan`、`rescan`、`serve`、`comms`、`memory put/delete/clear`、`cache clear/gc`、單獨的 `upgrade`）會被拒絕並說明原因。輸出上限 64 KB 並附 spill 路徑，`timeout_ms` 會被 clamp 到工具呼叫 timeout。`cliTool: false` 可停用。
+
+## 13. Bootstrap prompt section
+
+一個短 section，只補 BaseMind 自己的 MCP instructions 沒涵蓋的三件事：CLI-only 動詞、BaseMind 回答不了時改用 harness 原生 read/grep/glob/bash，以及工作區語意。binary 尚未就緒時為空字串，不含時間戳或絕對路徑，上限約 400 tokens。`bootstrap: false` 可停用。
+
+## 14. 同步下一個 BaseMind 版本
+
+`lib/upstream.js` 是唯一寫死版本的地方；升版清單（同步 skills、採集 fixtures、跑 gate）見 [docs/upstream-sync.md](docs/upstream-sync.md)。
 
 ---
 

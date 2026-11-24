@@ -33,6 +33,12 @@ jobs:
           node-version: 24.20.0
           registry-url: https://registry.npmjs.org
 
+      - name: Resolve the pinned BaseMind version
+        run: |
+          version="$(node -e "import('./lib/upstream.js').then(m => console.log(m.UPSTREAM.version))")"
+          echo "BM_VERSION=$version" >> "$GITHUB_ENV"
+          echo "integration gate uses BaseMind $version"
+
       - name: Check npm supports trusted publishing
         run: |
           npm_version="$(npm --version)"
@@ -67,7 +73,7 @@ jobs:
         # never count as a pass for a release. The binary is pinned, checksum-verified
         # and required by BASEMIND_REQUIRE_INTEGRATION below.
         run: |
-          version=0.34.0
+          version="$BM_VERSION"
           base="https://github.com/Goldziher/basemind/releases/download/v${version}"
           asset="basemind-x86_64-unknown-linux-gnu.tar.gz"
           mkdir -p "$RUNNER_TEMP/basemind"

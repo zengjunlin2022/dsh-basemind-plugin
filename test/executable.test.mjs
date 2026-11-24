@@ -399,6 +399,27 @@ test('resolveLaunch rejects rather than guessing when a .cmd path cannot be wrap
 
 // ------------------------------------------------------------------- readVersion ---
 
+test('resolveLaunch uses a manager selection verbatim without resolving or provisioning', async () => {
+  const logger = createLogger();
+  const ctx = createResolveCtx({});
+  const selection = { path: 'C:\\Users\\me\\.dsh\\cache\\dsh-basemind-plugin\\managed-binaries\\0.34.0\\windows-x64\\basemind.exe' };
+
+  const launch = await resolveLaunch({
+    config: { command: 'basemind', args: ['serve'], autoProvision: true },
+    ctx,
+    root: 'D:\\repo',
+    selection,
+    platform: 'win32',
+    logger,
+  });
+
+  assert.deepEqual(ctx.calls, [], 'a verified selection must not be re-resolved');
+  assert.equal(launch.exe, selection.path);
+  assert.equal(launch.provisioning, false);
+  assert.equal(launch.mode, 'direct');
+  assert.deepEqual(launch.argv, [selection.path, 'serve', '--root', '.']);
+});
+
 /** Fake ctx whose spawn emits `output` on stdout and then exits. */
 function createVersionCtx({ output = '0.29.3\n', fail = false } = {}) {
   const calls = { spawn: 0, terminate: 0, waitForExit: 0, receiver: undefined };

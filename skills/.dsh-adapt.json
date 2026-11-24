@@ -1,0 +1,117 @@
+{
+  "description": "Declarative DSH adaptations of the vendored BaseMind skills. scripts/sync-basemind-skills.mjs applies every rule to the named upstream file; a rule that matches a different number of times than expectOccurrences fails the sync (that is the drift detector for upstream rewording). Edit this file, then re-run `node scripts/sync-basemind-skills.mjs --tag v0.34.0`; never hand-edit skills/**.",
+  "rules": [
+    {
+      "id": "R1",
+      "skill": "basemind-cli",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "The plugin runs its own version-matched binary, so launch the CLI through it:\n`${CLAUDE_PLUGIN_ROOT}/scripts/mcp-launch.sh <args>` (in other hosts, `scripts/mcp-launch.sh` in the\nplugin directory). Bare `basemind` from `PATH` is the fallback when no plugin launcher exists; a\ndifferent version there shares the same cache. Examples below write `basemind` for brevity.",
+      "replace": "The plugin runs its own version-matched binary, so launch the CLI through it: call the\n`mcp__basemind__cli` tool with `args: [\"code\", \"grep\", …]` — the plugin runs the same verified\nbinary as the MCP tools (no shell, argv only), so `basemind code grep …` and the MCP server share\nthe same cache. Bare `basemind` from `PATH` is only a fallback when the plugin is disabled; a\ndifferent version there shares the same cache. Examples below write `basemind` for brevity."
+    },
+    {
+      "id": "R1",
+      "skill": "basemind-doctor",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "Run the `basemind …` commands below through the plugin-managed, version-matched binary,\n`${CLAUDE_PLUGIN_ROOT}/scripts/mcp-launch.sh <args>` (in other hosts, `scripts/mcp-launch.sh` in the\nplugin directory); use bare `basemind` from `PATH` only when no plugin launcher exists.",
+      "replace": "Run the `basemind …` commands below through the plugin-managed, version-matched binary: call the\n`mcp__basemind__cli` tool with `args: [\"doctor\"]` or `args: [\"status\"]` — the plugin runs the same\nverified binary as the MCP tools (no shell, argv only), so the CLI and the MCP server share one\ncache. Use bare `basemind` from `PATH` only when the plugin is disabled."
+    },
+    {
+      "id": "R1",
+      "skill": "basemind-scan",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "1. The plugin launcher, which installs and execs the version-matched binary:\n   `${CLAUDE_PLUGIN_ROOT}/scripts/mcp-launch.sh scan` (in other hosts, `scripts/mcp-launch.sh` in the\n   plugin directory). Its binary is cached at `${XDG_CACHE_HOME:-~/.cache}/basemind/versions/<version>/basemind`.\n2. Fallback when no plugin launcher exists: `basemind` on `PATH`.",
+      "replace": "1. The plugin's version-matched binary. In DSH the `mcp__basemind__cli` tool runs it (the same\n   verified binary as the MCP tools, no shell, argv only; cached at\n   `${XDG_CACHE_HOME:-~/.cache}/basemind/versions/<version>/basemind`), but `scan` is a write verb\n   that stays blocked there: use the `index_rescan` MCP tool instead, or run `basemind scan`\n   yourself in a terminal.\n2. Fallback when no plugin launcher exists: `basemind` on `PATH`."
+    },
+    {
+      "id": "R1",
+      "skill": "basemind-stats",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "without a running server. Launch it through the plugin's version-matched binary,\n`${CLAUDE_PLUGIN_ROOT}/scripts/mcp-launch.sh admin telemetry --json` (bare `basemind` from `PATH`\nwhen no plugin launcher exists).",
+      "replace": "without a running server. Launch it through the plugin's version-matched binary: call the\n`mcp__basemind__cli` tool with `args: [\"admin\", \"telemetry\", \"--json\"]` — the plugin runs the same\nverified binary as the MCP tools (no shell, argv only). Bare `basemind` from `PATH` is only a\nfallback when the plugin is disabled."
+    },
+    {
+      "id": "R2",
+      "skill": "basemind",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "The MCP server is launched by the host (`basemind serve`, wired up in `.claude-plugin/plugin.json`\nfor you). You do not start it manually.",
+      "replace": "The MCP server is launched by the `dsh-basemind-plugin` bundle (`basemind serve`, wired up in the\nplugin row for you) — DSH starts it automatically, so you do not start it manually."
+    },
+    {
+      "id": "R3",
+      "skill": "basemind-doctor",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "- **Cursor / others**: toggle/reconnect the basemind MCP server in the MCP settings.\n",
+      "replace": "- **Cursor / others**: toggle/reconnect the basemind MCP server in the MCP settings.\n- **DSH (dsh-basemind-plugin)**: disable and re-enable the `dsh-basemind` plugin row, or restart the\n  session. The plugin re-runs its verified binary selection and starts a fresh `basemind serve` on\n  the next connection.\n"
+    },
+    {
+      "id": "R4",
+      "skill": "basemind-comms",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "posts are never unread for it. In Claude Code the plugin's PreToolUse hook injects a session or\nsubagent `as` when you give none. A reply's `notices` list anything unusual (a rejected id, more\nthan one live session on the principal, a thread archived by the cap); read them.",
+      "replace": "posts are never unread for it. DSH does not inject `as`: a subagent that wants its own identity\nmust pass it explicitly on every call. A reply's `notices` list anything unusual (a rejected id, more\nthan one live session on the principal, a thread archived by the cap); read them."
+    },
+    {
+      "id": "R5",
+      "skill": "basemind-stats",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "or invokes `/bm-stats` directly. This skill is strictly user-invoked — see Notes.",
+      "replace": "or invokes `/bm-stats` directly. DSH: `/basemind-stats` loads this skill directly. This skill is\nstrictly user-invoked — see Notes."
+    },
+    {
+      "id": "R5",
+      "skill": "basemind-doctor",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "- Errors / \"no index\" / `file_count: 0` with blobs present → the index is missing or lost. Build\n  it: `basemind scan` (see the `basemind-scan` skill / `/bm-scan`).",
+      "replace": "- Errors / \"no index\" / `file_count: 0` with blobs present → the index is missing or lost. Build\n  it: `basemind scan` (see the `basemind-scan` skill / `/bm-scan`; in DSH, `/basemind-scan` loads\n  that skill directly)."
+    },
+    {
+      "id": "R7",
+      "skill": "basemind-multi-agent-room",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "In Claude Code the PreToolUse hook injects `<agent_type>-<8 hex>` when a call has no `as`; that\nname is not predictable, so tell any subagent you will address to pass an explicit `as`.",
+      "replace": "DSH does not inject `as` (there is no PreToolUse hook), so every call must pass it explicitly —\ntell each subagent you address to pass its own `as` on every agent tool call."
+    },
+    {
+      "id": "R8",
+      "skill": "basemind-scan",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "Build or refresh the basemind index by running `basemind scan` via the CLI. Use this when basemind reports \"no index\" / \"no indexed files\", or when `index_status` reports `degraded` or `rescan_needed`. Works without the MCP server — it shells the basemind binary directly.",
+      "replace": "Build or refresh the basemind index with the `index_rescan` MCP tool, or run `basemind scan` yourself in a terminal (the same version-matched binary as the MCP tools; DSH's `mcp__basemind__cli` tool denies `scan` and `rescan`). Use this when basemind reports \"no index\" / \"no indexed files\", or when `index_status` reports `degraded` or `rescan_needed`."
+    },
+    {
+      "id": "R8",
+      "skill": "basemind-scan",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "From the repository root:\n\n```sh\nbasemind scan                   # full working-tree scan\nbasemind rescan <path>          # re-index only these paths (incremental)\n```",
+      "replace": "With a live `basemind serve`, rebuild through the MCP tools (the same version-matched binary as the\nCLI, no shell, argv only):\n\n```text\nindex_rescan {}                        # full working-tree scan\nindex_rescan {\"paths\": [\"<path>\"]}     # re-index only these paths (incremental)\n```\n\nWithout a running server, run `basemind scan` / `basemind rescan <path>` yourself in a terminal\nfrom the repository root — the plugin's CLI tool denies both write verbs."
+    },
+    {
+      "id": "R8",
+      "skill": "basemind-scan",
+      "file": "SKILL.md",
+      "expectOccurrences": 1,
+      "find": "`basemind scan`. This skill runs the scan via the **CLI**, so it works even when the MCP server\n(`basemind serve`) is not running — which is exactly the situation when basemind reports",
+      "replace": "`basemind scan`. In DSH, rebuild through the `index_rescan` MCP tool while a server is running,\nor run `basemind scan` yourself in a terminal when none is; the plugin's CLI tool denies `scan`\nand `rescan`. Either way the same version-matched binary is used, so this works even when the MCP\nserver (`basemind serve`) is not running — which is exactly the situation when basemind reports"
+    }
+  ],
+  "checked": [
+    {
+      "id": "R6",
+      "skill": "basemind",
+      "file": "SKILL.md",
+      "note": "Reviewed, no edit needed: DSH registers every MCP tool schema eagerly (no tool-search deferral), so \"The job tools are always loaded: call them directly, no tool search needed\" remains true."
+    }
+  ]
+}

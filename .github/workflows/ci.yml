@@ -40,5 +40,8 @@ jobs:
       - name: Check the bundle
         run: npm run check
 
+      - name: Check the vendored skills against their provenance
+        run: npm run check:skills
+
       - name: Check the packed contents
         run: npm run check:pack

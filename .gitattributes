@@ -1,0 +1,7 @@
+# Vendored BaseMind content must stay byte-for-byte identical on every checkout:
+# `npm run check:skills` and test/upstream.test.mjs hash the raw working-tree bytes
+# with sha256, so a CRLF conversion (core.autocrlf=true, the default for
+# actions/checkout on windows-latest) would report every vendored skill as drift.
+# Only skills/** opts out of git's text conversion: the rest of the repository keeps
+# git's default behaviour, and this file stays intentionally minimal.
+skills/** -text

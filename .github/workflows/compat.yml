@@ -7,23 +7,26 @@ name: BaseMind compatibility
 # happen.
 #
 # `basemind_version` lets a maintainer point the version-agnostic suite at an older
-# build (for example 0.33.0). The 0.34.0 verb-tool contract suite only runs for the
-# pinned default, because older builds do not advertise those tools.
+# build (for example 0.33.0). The verb-tool contract suite runs whenever the tested
+# build is the pinned one: the Resolve step exports the pin from lib/upstream.js as
+# BM_PIN and the gate compares against it, so a pin bump keeps the contract suite
+# running while an explicitly chosen older input still skips it (those builds do not
+# advertise the verb tools).
 
 on:
   workflow_dispatch:
     inputs:
       basemind_version:
-        description: BaseMind release to test (0.34.0 for the full contract)
+        description: BaseMind release to test (empty = the version pinned in lib/upstream.js)
         required: false
-        default: '0.34.0'
+        default: ''
 
 permissions:
   contents: read
 
 jobs:
   compat:
-    name: ${{ matrix.os }} / BaseMind ${{ inputs.basemind_version }}
+    name: ${{ matrix.os }} / BaseMind pin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
@@ -53,10 +56,22 @@ jobs:
         with:
           node-version: 24.20.0
 
-      - name: Install BaseMind ${{ inputs.basemind_version }}
+      - name: Resolve the pinned BaseMind version
         shell: bash
         run: |
+          pin="$(node -e "import('./lib/upstream.js').then(m => console.log(m.UPSTREAM.version))")"
           version='${{ inputs.basemind_version }}'
+          if [ -z "$version" ]; then
+            version="$pin"
+          fi
+          echo "BM_PIN=$pin" >> "$GITHUB_ENV"
+          echo "BM_VERSION=$version" >> "$GITHUB_ENV"
+          echo "testing BaseMind $version (pin $pin)"
+
+      - name: Install BaseMind ${{ inputs.basemind_version || 'pinned' }}
+        shell: bash
+        run: |
+          version="$BM_VERSION"
           asset='${{ matrix.asset }}'
           base="https://github.com/Goldziher/basemind/releases/download/v${version}"
           mkdir -p "$RUNNER_TEMP/basemind"
@@ -92,8 +107,8 @@ jobs:
           "$bin" --version
           echo "BASEMIND_BIN=$bin" >> "$GITHUB_ENV"
 
-      - name: Run the 0.34.0 verb-tool contract suite
-        if: inputs.basemind_version == '0.34.0'
+      - name: Run the pinned verb-tool contract suite
+        if: env.BM_VERSION == env.BM_PIN
         env:
           BASEMIND_REQUIRE_INTEGRATION: '1'
         run: node --test test/integration.test.mjs

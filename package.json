@@ -38,6 +38,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
+    "skills/**",
     "README.md",
     "README.zh.md",
     "CHANGELOG.md"
@@ -62,6 +63,8 @@
     "test:watch": "node --test --watch",
     "check": "node scripts/check-syntax.mjs && node scripts/check-manifest.mjs",
     "check:pack": "npm pack --json --dry-run > pack.json && node scripts/check-pack.mjs pack.json",
+    "sync:skills": "node scripts/sync-basemind-skills.mjs",
+    "check:skills": "node scripts/sync-basemind-skills.mjs --check",
     "verify": "npm run check && npm run check:pack && npm test",
     "pack": "npm pack",
     "preversion": "npm run verify",

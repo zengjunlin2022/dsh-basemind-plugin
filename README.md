@@ -38,7 +38,7 @@ Release notes are in [CHANGELOG.md](CHANGELOG.md).
 |---|---|
 | DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`, declared in `engines.dsh` and enforced by DSH at install and startup. This version is verified on `0.2.1-rc.5`. |
 | Node.js | `>= 24.20.0` (declared in `engines` and pinned with Volta). The plugin is plain ESM with no dependencies. |
-| BaseMind | Any version. The plugin does not pin or gate BaseMind: the tools it exposes are exactly what the running `basemind serve` advertises through `tools/list`. This version is verified on BaseMind **0.34.0**; 0.29.3–0.33.0 expose the same code intelligence through the older mode-based tools (which also included `graph`, `web`, `shell` and `workspace`), and 0.34.0 replaced them with the verb tools (see §5.2). |
+| BaseMind | **0.34.0**, pinned in `lib/upstream.js` and enforced by `binaryPolicy: 'exact'` (the default, §8): a local `basemind` whose major.minor.patch differs is reported in the log and `/basemind-status`, then skipped instead of used, and when no compatible local binary is found, `binaryDownload: true` (the default, §7) installs that pinned release from GitHub. `binaryPolicy: 'minor'` and `'any'` are escape hatches; `'any'` keeps only the MCP bridge and disables skills, the CLI tool and the version notice. Verified on Windows with BaseMind **0.34.0**; Linux and macOS runs are CI-pending in `.github/workflows/compat.yml`. Older releases (0.29.3–0.33.0) expose the mode-based tools instead of the verb tools (see §5.2). |
 
 ## 4. Install
 
@@ -135,7 +135,7 @@ Each tool does one thing; there is no `mode` and no `format` switch. Calls use t
 | `mcp__basemind__index_status`, `mcp__basemind__index_rescan` | index health and a rescan (`{}` rescans the whole workspace) |
 | `mcp__basemind__agent_inbox`, `mcp__basemind__agent_post`, `mcp__basemind__agent_threads` | agent comms (comms build only) |
 
-The tool list is read from the running BaseMind, so a newer version may expose more.
+The tool list is read from the running BaseMind. Under the default `binaryPolicy: 'exact'` that build is the pinned **0.34.0** (§8); another version runs only behind the `minor` / `any` escape hatches, and only then can a newer build expose a different tool set.
 
 Some tools answer with line-oriented text or [TOON](https://toonformat.dev) rather than JSON (`code_outline`, `code_grep`, `find_files`, `git_diff`). The plugin projects whatever text the server sends and does not parse it; the machine-readable form of every 0.34.0 result is in MCP `structuredContent`, which the plugin keeps in its result envelope. Do not `JSON.parse` the text block.
 
@@ -148,6 +148,92 @@ BaseMind's MCP resources (`basemind://status`, plus the `basemind://outline/{pat
 3. Reopen every DSH session — the plugin rediscovers the tool list on the new relay.
 
 Tool names changed: `mcp__basemind__code`, `__git`, `__memory`, `__admin`, `__graph`, `__web`, `__shell`, `__workspace` and `__agents` no longer exist, so any permission entry, preset prompt or script that names them must be updated. The plugin does not rewrite presets or permission files.
+
+## 6. Local-first binary selection
+
+On every start the plugin performs one selection per process, in this order:
+
+1. `command` when it is not the default `basemind` (an absolute path is used as given).
+2. `BASEMIND_BIN` (only while `command` stays at its default).
+3. `basemind` on `PATH`.
+4. the managed cache for the pinned version and platform.
+5. the official GitHub release for the pinned version (only when `binaryDownload: true`).
+6. `npx -y <npxSpec>` — the legacy path, only when `autoProvision: true` and everything above failed.
+
+Every candidate must pass the version policy before it is used. A local binary that does not match is reported in the log and in `/basemind-status`, then the next candidate is tried. `binaryFallback: false` stops at an incompatible explicit binary instead of falling through.
+
+The selection is fixed for the life of the process: every relay, CLI call and diagnostic uses it, and changing a session's working directory does not re-select. A compatible local hit or a valid cache hit performs no network request. Only the plugin-owned cache is written (state.json per workspace, install.json when adopting a cache).
+
+## 7. Managed binary download (on by default)
+
+`binaryDownload: true` is the default and is declared explicitly in `cordis.patch.yml`. When no local compatible binary exists, the plugin downloads the pinned asset from `github.com/Goldziher/basemind/releases/download/v<version>/`, verifies the published SHA256 from `basemind_<version>_checksums.txt`, unpacks the single expected binary with pure Node (tar.gz or zip; traversal, symlink and hardlink entries are rejected), and installs it atomically.
+
+- It writes only under `$DSH_HOME/cache/dsh-basemind-plugin/`.
+- It never touches the BaseMind data home, the project, the npm installation or `PATH`, and it never runs an installer.
+- Failure fails closed: an unverified binary is never executed, the plugin stays without tools, and `/basemind-status` plus one log line explain why.
+- Retries are bounded (two extra attempts); repeated failures back off for ten minutes per target.
+- Set `binaryDownload: false` to forbid it completely.
+
+## 8. Version policy
+
+`binaryPolicy` decides which found version counts as compatible with the pinned upstream version (currently `0.34.0`):
+
+| Value | Accepts | Notes |
+| --- | --- | --- |
+| `exact` (default) | the same major.minor.patch | prereleases are rejected |
+| `minor` | the same major.minor | patch is ignored, prereleases still rejected; use only after verifying that patch |
+| `any` | any executable | MCP bridge only: skills, the CLI tool and the version notice stay off |
+
+If you are stuck on `0.34.1`, either wait for a plugin release that pins and verifies it (recommended — the skills text and the CLI allowlist ship with the pin), or set `binaryPolicy: 'minor'` and accept that the skills were not verified against that patch.
+
+## 9. Cache, offline use and a custom binary
+
+- Cache: `$DSH_HOME/cache/dsh-basemind-plugin/managed-binaries/<version>/<platform>/` where platform is `windows-x64`, `linux-x64`, `linux-arm64` or `darwin-arm64`; metadata lives in `install.json`, failure state in `state.json`, temporary downloads in `download/`. `$DSH_HOME` is `DSH_HOME` when set, otherwise `~/.dsh`.
+- Reuse: a valid cache hit is used with no network at all. Deleting the cache directory is safe; the next start re-selects.
+- Offline: `binaryDownload: false` forbids every network request. Put a compatible binary on `PATH`, point `command` or `BASEMIND_BIN` at one, or pre-seed the cache.
+- Custom binary: set `command: "C:\\tools\\basemind\\basemind.exe"` or `BASEMIND_BIN`. `binaryFallback: false` turns an incompatible pin into a hard stop with a diagnostic instead of a silent fallthrough.
+
+## 10. Checking the local binary: /basemind-status
+
+Type `/basemind-status` in the composer. It is a human command: it does not call the model and does not consume tokens. It reports whether a binary is present, its path, the found and expected versions, whether they are compatible, the selection source, the cache state, the download state and the two or three actions that would fix the situation.
+
+```
+BaseMind status - dsh-basemind-plugin 0.2.0
+  expected upstream : 0.34.0 (exact)
+  platform          : windows-x64 (x86_64-pc-windows-msvc)
+  present           : yes
+  path              : ...\Programs\basemind\basemind.exe
+  found             : 0.33.0
+  compatible        : NO - minor mismatch (0.33 vs 0.34)
+  source            : path
+  managed cache     : empty (...\.dsh\cache\dsh-basemind-plugin\managed-binaries)
+  download          : enabled (binaryDownload=true)
+
+  What to do:
+    - install BaseMind 0.34.0 and point command / BASEMIND_BIN at it, or
+    - restart DSH later so the next start retries after a short cooldown, or
+    - set binaryPolicy: "minor" to accept 0.34.x only after you have verified it.
+```
+
+It is not a settings page, and it does not add a card to the Settings or Plugins UI.
+
+## 11. Official skills
+
+The package ships the ten official BaseMind skills (`basemind`, `basemind-cli`, `basemind-code-search`, `basemind-comms`, `basemind-doctor`, `basemind-documents`, `basemind-git-history`, `basemind-multi-agent-room`, `basemind-scan`, `basemind-stats`) and registers them through `ctx.skills.registerProvider()` at rank 1000. A skill with the same name from the project, from `~/.dsh/skills`, or from another plugin wins; the plugin's copy appears only when nothing else provides that name. The catalog carries name and description only, and the body loads when the model opens the skill. `skills: false` disables them.
+
+The DSH adaptations of the upstream text live in `skills/.dsh-adapt.json`; regenerate with `npm run sync:skills` and verify with `npm run check:skills`. Do not edit `skills/**` by hand.
+
+## 12. MCP tools and the CLI bridge
+
+All MCP tools come from the running BaseMind, so the set follows the binary. Alongside them the plugin registers `mcp__basemind__cli`: argv only, read-only, no shell, running the same verified binary as the relay. It covers capabilities that have no MCP tool (`code explain`, `code impact`, `code deadcode`, `code cycles`, `code migration check`, `overview`, `git hotspots`, `doctor`, `status`, `upgrade --plan`, `manual`). Destructive verbs (`scan`, `rescan`, `serve`, `comms`, `memory put/delete/clear`, `cache clear/gc`, a bare `upgrade`) are refused with an explanation. Output is capped at 64 KB with a spill path, and `timeout_ms` is clamped to the tool-call timeout. `cliTool: false` disables it.
+
+## 13. Bootstrap prompt section
+
+One short prompt section covers only what BaseMind's own MCP instructions do not: the CLI-only verbs, the fallback to the harness's own read/grep/glob/bash tools, and the workspace semantics. It is empty until a verified binary is serving tools, contains no timestamp or absolute path, and costs at most about 400 tokens. `bootstrap: false` disables it.
+
+## 14. Syncing the next BaseMind release
+
+`lib/upstream.js` is the only place the pinned version lives. The upgrade checklist (sync skills, capture fixtures, run the gates) is in [docs/upstream-sync.md](docs/upstream-sync.md).
 
 ---
 

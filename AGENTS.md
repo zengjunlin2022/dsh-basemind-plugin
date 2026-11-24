@@ -88,7 +88,7 @@ DSH 插件契約優先查官方文件及目標 runtime 的實際服務介面，�
 - 保留環境 allowlist 與敏感變數清理，不整份轉送 Host 環境或將 token、密碼寫入 log。顯式 `config.env` 的現有語意亦須保持。
 - Windows `.cmd`／`.bat` launcher 使用既有 wrapper 及字元檢查；不拼接未驗證的 shell 字串。路徑解析及 canonicalization 應涵蓋 Windows 與非 Windows 行為。
 - `basemind serve` 不保證在 stdin 關閉後退出；卸載須終止自身擁有的 relay 並清理 pool，不以關 stdin 代替 terminate，也不任意結束機器上其他共用 daemon。
-- 保留 `autoProvision: false` 預設值；不擅自下載 BaseMind、建立索引或執行 scan/rescan。插件修改不得隱藏加入此類啟動副作用。
+- 保留 `autoProvision: false` 預設值。啟動副作用分兩類：**寫入使用者資料或專案狀態**（BaseMind data home、索引、scan/rescan、comms stop、memory/cache 清理）一律禁止；**只寫入插件自管快取**（`$DSH_HOME/cache/dsh-basemind-plugin/`）的動作才允許，且必須在 [cordis.patch.yml](./cordis.patch.yml) 顯式宣告、可用設定完全停用、失敗不阻塞 Host、不執行任何安裝程式。`binaryDownload` 預設 `true` 的 managed binary 下載屬後者，並由 `scripts/check-manifest.mjs` 斷言 patch 內顯式存在。
 
 ## 6. 驗證方式
 
@@ -123,3 +123,21 @@ DSH 插件契約優先查官方文件及目標 runtime 的實際服務介面，�
 - 不執行 `npm run release`、`release:minor`、`release:major` 或預設會建立 commit/tag 的 `npm version`；這些現有腳本含提交／推送副作用，並非普通驗證命令。
 - 不自行 publish、推 tag 或觸發發布。[.github/workflows/release.yml](./.github/workflows/release.yml) 在版本 tag 推送後可發布 npm 及 GitHub Release；一般實施授權不包含發布授權。
 - 完成時簡報修改檔案、關鍵變化、實際驗證命令與結果、未驗證範圍及剩餘風險。不把局部自檢稱為獨立 Review，也不自動啟動 Review → Fix 循環。
+
+## 8. 上游版本同步與 Binary Manager
+
+### 8.1 單一版本來源
+
+- BaseMind 版本、tag、commit、asset 對照、checksums 檔名與 skills 清單只存在 [lib/upstream.js](./lib/upstream.js)。其他任何地方（fixtures、測試、workflow pin、README 的已驗證版本、skills provenance）都必須從它取值或與它對齊；禁止從 `package.json` 推導 BaseMind 版本，也禁止使用 `latest` 作為自動下載目標。
+- 升版流程與成本見 [docs/upstream-sync.md](./docs/upstream-sync.md)；改版時同步更新 fixtures 與 `skills/UPSTREAM.json`。
+
+### 8.2 Skills 適配不可手改
+
+- `skills/**` 是 vendored 官方內容。DSH 適配只存在 [skills/.dsh-adapt.json](./skills/.dsh-adapt.json)，由 `node scripts/sync-basemind-skills.mjs --tag vX.Y.Z` 套用；每條規則必須精確命中宣告次數，否則同步失敗。
+- 禁止直接編輯 `skills/**`（會被下一次同步或 `--check` 覆蓋而失去可追溯性）。修改適配規則後重跑同步，並確認 `npm run check:skills` 通過。
+
+### 8.3 Binary Manager 測試紀律
+
+- 單元測試不得連網、不得呼叫真實 `basemind`、不得寫出 `os.tmpdir()`；下載用本地 mock server／注入 `fetch`，解壓用 fixture 壓縮包，子程序用注入的 spawn adapter。
+- 必須有反向斷言：`binaryDownload:false` 時任何路徑都是 0 次網路、0 次快取寫入；sha256 不符後不得再執行 `--version`。
+- 併發案例（多 session／多 process 只下載一次、stale lock 接手、取消只取消自己的等待）不得以 sleep 湊時序；用可注入的 clock／sleep。

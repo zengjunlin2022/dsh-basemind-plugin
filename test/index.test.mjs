@@ -1,14 +1,43 @@
 import assert from 'node:assert/strict'
 import { spawn as spawnChild } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { apply, name, inject } from '../index.js'
 
+// The binary manager writes state.json under $DSH_HOME; a unit test must never
+// touch the real one. Own the directory for this test process.
+const TEST_DSH_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-basemind-home-'))
+process.env.DSH_HOME = TEST_DSH_HOME
+after(() => {
+  fs.rmSync(TEST_DSH_HOME, { recursive: true, force: true })
+})
+
 const here = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURES = path.join(here, '..', 'fixtures')
 const FAKE_SERVER = path.join(FIXTURES, 'fake-mcp-server.mjs')
+const FAKE_BASEMIND = path.join(FIXTURES, process.platform === 'win32' ? 'fake-basemind.cmd' : 'fake-basemind.sh')
+
+/**
+ * Path to the fake BaseMind launcher that actually runs here: Windows uses the
+ * .cmd wrapper, POSIX copies the shell launcher to a temp dir and marks it
+ * executable (the repository does not carry an exec bit).
+ * @returns {string}
+ */
+let fakeBasemindPath
+function fakeBasemind() {
+  if (process.platform === 'win32') return FAKE_BASEMIND
+  if (fakeBasemindPath !== undefined) return fakeBasemindPath
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-basemind-'))
+  const copy = path.join(directory, 'fake-basemind.sh')
+  fs.copyFileSync(FAKE_BASEMIND, copy)
+  fs.chmodSync(copy, 0o755)
+  fakeBasemindPath = copy
+  return copy
+}
 const ROOT_A = path.resolve(here, '..')
 const ROOT_B = FIXTURES
 
@@ -25,6 +54,22 @@ async function waitFor(predicate, { timeoutMs = 15_000, intervalMs = 25, label =
 
 /** Adapt a real node child process to the DSH `SubprocessHandle` shape. */
 function adapt(child) {
+  const outChunks = []
+  const errChunks = []
+  child.stdout?.on?.('data', (chunk) => outChunks.push(Buffer.from(chunk)))
+  child.stderr?.on?.('data', (chunk) => errChunks.push(Buffer.from(chunk)))
+  const collected = {
+    stdout: {
+      readFrom() {
+        return { text: Buffer.concat(outChunks).toString('utf8'), lossy: false, spillPath: undefined }
+      },
+    },
+    stderr: {
+      readFrom() {
+        return { text: Buffer.concat(errChunks).toString('utf8'), lossy: false, spillPath: undefined }
+      },
+    },
+  }
   const done = new Promise((resolve) => {
     child.once('exit', (exitCode, signal) => resolve({ exitCode, signal: signal ?? null }))
     child.once('error', () => resolve({ exitCode: null, signal: null }))
@@ -33,7 +78,7 @@ function adapt(child) {
     stdin: child.stdin,
     stdout: child.stdout,
     stderr: child.stderr,
-    collected: {},
+    collected,
     done,
     terminate() {
       try {
@@ -66,6 +111,8 @@ function adapt(child) {
  */
 function createFakeContext({ defaultDirectory = ROOT_A, launchable = true, failRoots = [], rejectRegistration = false } = {}) {
   const tools = new Map()
+  const commands = new Map()
+  const skillProviders = new Set()
   const spawned = []
   const warnings = []
   const sections = []
@@ -130,8 +177,32 @@ function createFakeContext({ defaultDirectory = ROOT_A, launchable = true, failR
       debug: () => {},
       info: () => {},
     },
+    commands: {
+      register(definition) {
+        if (commands.has(definition.name)) throw new Error(`duplicate command ${definition.name}`)
+        commands.set(definition.name, definition)
+        return () => commands.delete(definition.name)
+      },
+      get(name) {
+        return commands.get(name)
+      },
+      keys() {
+        return [...commands.keys()]
+      },
+    },
+    skills: {
+      registerProvider(factory) {
+        const control = { invalidations: 0, invalidate() { control.invalidations += 1 } }
+        const provider = factory(control)
+        skillProviders.add(provider)
+        return () => skillProviders.delete(provider)
+      },
+    },
+    skillProviders,
     get(key) {
       if (key === 'mcpResources') return ctx.mcpResources
+      if (key === 'commands') return ctx.commands
+      if (key === 'skills') return ctx.skills
       return undefined
     },
     on(event, listener) {
@@ -197,6 +268,10 @@ function fakeSettings(extra = {}) {
   return {
     command: process.execPath,
     args: [FAKE_SERVER],
+    // Unit tests never touch the network or the user's managed cache: the
+    // scripted MCP server is an "any" binary, and downloading is off.
+    binaryPolicy: 'any',
+    binaryDownload: false,
     discoveryRoot: 'agent-first',
     env: { FAKE_MCP_IGNORE_STDIN_CLOSE: '1', ...(extra.env ?? {}) },
     ...extra,
@@ -342,7 +417,7 @@ test('the shipped discoveryRoot default starts nothing before a session exists',
   // directory; the default mode must not index it before a session picks a root.
   const ctx = createFakeContext({ defaultDirectory: ROOT_A })
   t.after(() => unload(ctx))
-  apply(ctx, { command: process.execPath, args: [FAKE_SERVER] })
+  apply(ctx, { command: process.execPath, args: [FAKE_SERVER], binaryPolicy: 'any', binaryDownload: false })
 
   await new Promise((resolve) => setTimeout(resolve, 200))
   assert.equal(ctx.spawned.filter((handle) => handle.stdin !== null).length, 0, 'no relay was spawned')
@@ -437,6 +512,93 @@ test('a 0.34 fixable error reaches the model with its code', async (t) => {
   await waitFor(() => ctx.tools.get('mcp__basemind__code_read') !== undefined, { label: 'the verb tools' })
 
   await assert.rejects(() => call(ctx, 'mcp__basemind__code_read', { path: 'src/math.js' }), /invalid_argument/)
+})
+
+
+test('a verified binary registers the CLI tool, bootstrap text, official skills and /basemind-status', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ command: fakeBasemind(), args: ['serve'], binaryPolicy: 'exact' }))
+
+  await waitFor(() => ctx.tools.get('mcp__basemind__cli') !== undefined, { label: 'the CLI tool' })
+  assert.ok(ctx.tools.get('mcp__basemind__code'), 'the MCP tools are registered too')
+
+  const bootstrap = ctx.sections.find((entry) => entry.name === 'mcp:basemind:bootstrap')
+  assert.ok(bootstrap, 'the bootstrap section is registered')
+  const text = bootstrap.text()
+  assert.match(text, /mcp__basemind__cli/)
+  assert.match(text, /0\.34\.0/)
+
+  assert.equal(ctx.skillProviders.size, 1, 'the skills provider is registered')
+  const provider = [...ctx.skillProviders][0]
+  const listed = await provider.list()
+  assert.equal(listed.length, 10, 'all ten official skills are listed')
+  assert.equal(listed[0].rank, 1000)
+  assert.equal(listed[0].provider, 'basemind')
+
+  const command = ctx.commands.get('basemind-status')
+  assert.ok(command, '/basemind-status is registered')
+  const result = await command.handler()
+  assert.equal(result.kind, 'success')
+  assert.match(result.text, /0\.34\.0/)
+  assert.match(result.text, /present/)
+})
+
+test('an unavailable binary registers nothing but keeps /basemind-status usable', async (t) => {
+  const ctx = createFakeContext({ launchable: false })
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ command: 'basemind' }))
+
+  await waitFor(() => ctx.warnings.some((message) => /startup failed/.test(message)), { label: 'the startup failure' })
+  assert.equal(ctx.tools.schemas().length, 0)
+  assert.equal(ctx.sections.length, 0)
+  assert.equal(ctx.skillProviders.size, 0)
+
+  const command = ctx.commands.get('basemind-status')
+  assert.ok(command, '/basemind-status stays available when BaseMind is not')
+  const result = await command.handler()
+  assert.equal(result.kind, 'success')
+  assert.match(result.text, /present/)
+})
+
+test('skills:false and cliTool:false remove those surfaces without touching the relay', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ command: fakeBasemind(), args: ['serve'], binaryPolicy: 'exact', skills: false, cliTool: false }))
+
+  await waitFor(() => ctx.tools.get('mcp__basemind__code') !== undefined, { label: 'the MCP tools' })
+  assert.equal(ctx.tools.get('mcp__basemind__cli'), undefined)
+  assert.equal(ctx.skillProviders.size, 0)
+  const bootstrap = ctx.sections.find((entry) => entry.name === 'mcp:basemind:bootstrap')
+  assert.ok(bootstrap, 'bootstrap is independent of the CLI switch')
+  assert.doesNotMatch(bootstrap.text(), /mcp__basemind__cli/)
+  assert.doesNotMatch(bootstrap.text(), /long-form playbook/, 'skills:false must not advertise the basemind skill')
+})
+
+test('the CLI tool runs the same verified binary as the relay', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ command: fakeBasemind(), args: ['serve'], binaryPolicy: 'exact' }))
+  await waitFor(() => ctx.tools.get('mcp__basemind__cli') !== undefined, { label: 'the CLI tool' })
+
+  const result = await call(ctx, 'mcp__basemind__cli', { args: ['status'] })
+  assert.equal(result.isError, false)
+  assert.match(result.text, /fake-basemind status --root \./)
+})
+
+test('binaryPolicy any keeps the MCP bridge but exposes no CLI, skills or verified bootstrap', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings())
+  await waitFor(() => ctx.tools.get('mcp__basemind__code') !== undefined, { label: 'the MCP tools' })
+
+  assert.equal(ctx.tools.get('mcp__basemind__cli'), undefined)
+  assert.equal(ctx.skillProviders.size, 0)
+  const bootstrap = ctx.sections.find((entry) => entry.name === 'mcp:basemind:bootstrap')
+  assert.ok(bootstrap)
+  const text = bootstrap.text()
+  assert.match(text, /unverified/)
+  assert.doesNotMatch(text, /mcp__basemind__cli/)
 })
 
 test('failOnStartupError surfaces an unresolvable launcher from apply', async () => {

@@ -1,0 +1,278 @@
+{
+  "upstream": {
+    "repository": "Goldziher/basemind",
+    "tag": "v0.34.0",
+    "commit": "8e7b149",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Na'aman Hirschfeld"
+  },
+  "version": "0.34.0",
+  "syncedAt": "2026-11-24",
+  "adaptRulesSha256": "6b35a37d58bad250111fa69690d6bc70fa1b355d14389f421a734d6ef884fb7e",
+  "licenseFile": {
+    "sourcePath": "LICENSE",
+    "outputPath": "skills/LICENSE-basemind.txt",
+    "sourceSha256": "e4611c3a2a26e8a205cd6456a59513111f9898ff32065b06b7582c734d05b7ea",
+    "outputSha256": "e4611c3a2a26e8a205cd6456a59513111f9898ff32065b06b7582c734d05b7ea"
+  },
+  "skills": {
+    "basemind": {
+      "sourcePath": "skills/basemind/SKILL.md",
+      "sourceSha256": "e115958a59cdf95b8051e2d626c048571fa1a8376fe5f17834d6aca44ac439cf",
+      "outputSha256": "b72ebcce732761c3a401dee6c068b95927def0fdb2f1da0dc819b69aee62ed21",
+      "adaptations": [
+        "R2",
+        "R6"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind/SKILL.md",
+          "sourceSha256": "e115958a59cdf95b8051e2d626c048571fa1a8376fe5f17834d6aca44ac439cf",
+          "outputSha256": "b72ebcce732761c3a401dee6c068b95927def0fdb2f1da0dc819b69aee62ed21",
+          "contentHash": "Content-Hash: blake3:60734c8b746ff3ee862211ab7febcba3d91360cdb5fbda8ecae0343a4cb01608",
+          "adaptations": [
+            "R2",
+            "R6"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind/index.md",
+          "sourceSha256": "f1974eabc0fc44d9ffc24f821a4e9f8818b649c69373d7171802de7575bca755",
+          "outputSha256": "f1974eabc0fc44d9ffc24f821a4e9f8818b649c69373d7171802de7575bca755",
+          "contentHash": "Content-Hash: blake3:35e4be061e2243b6b804328cc963d64910d91a1d6d556f2e11005beb206ffaba",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-cli": {
+      "sourcePath": "skills/basemind-cli/SKILL.md",
+      "sourceSha256": "997283d9b206f7ce36fd96f92647f2ad2c73e2b6a859124bd0b57510b09a46e2",
+      "outputSha256": "b26169b17bdf0d3de3f9bc3413c8db4bb922ce293c1b232dd498fa8095d76a03",
+      "adaptations": [
+        "R1"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-cli/SKILL.md",
+          "sourceSha256": "997283d9b206f7ce36fd96f92647f2ad2c73e2b6a859124bd0b57510b09a46e2",
+          "outputSha256": "b26169b17bdf0d3de3f9bc3413c8db4bb922ce293c1b232dd498fa8095d76a03",
+          "contentHash": "Content-Hash: blake3:439d48d0428b07e96e93af0a2b384652575fa82c960ff4f244cfa2c5aad95cc9",
+          "adaptations": [
+            "R1"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-cli/index.md",
+          "sourceSha256": "6c3fbfd4d1c1665d06d2020e5ecbb28435367cb08e6a58e19ca90d3f11d0a848",
+          "outputSha256": "6c3fbfd4d1c1665d06d2020e5ecbb28435367cb08e6a58e19ca90d3f11d0a848",
+          "contentHash": "Content-Hash: blake3:28e1c7fa1f2c8891284d15c24ff2e8556ed2fbb71a1dbb0ede0ac6ca2de22d08",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-code-search": {
+      "sourcePath": "skills/basemind-code-search/SKILL.md",
+      "sourceSha256": "0d96389594ee9bd6d5691174515bd49fc575dfb29a3e5088ad73ad57095900ae",
+      "outputSha256": "0d96389594ee9bd6d5691174515bd49fc575dfb29a3e5088ad73ad57095900ae",
+      "adaptations": [],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-code-search/SKILL.md",
+          "sourceSha256": "0d96389594ee9bd6d5691174515bd49fc575dfb29a3e5088ad73ad57095900ae",
+          "outputSha256": "0d96389594ee9bd6d5691174515bd49fc575dfb29a3e5088ad73ad57095900ae",
+          "contentHash": "Content-Hash: blake3:0fc4ab2923e8611c62542a28d4e99d3584b612be085defb4a800df46e34cf11d",
+          "adaptations": []
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-code-search/index.md",
+          "sourceSha256": "bc62e1edbda8fa8721be27feafab7ee8f7db15aa388bf0a08780749549f11de3",
+          "outputSha256": "bc62e1edbda8fa8721be27feafab7ee8f7db15aa388bf0a08780749549f11de3",
+          "contentHash": "Content-Hash: blake3:cffa144ae8eae78e2a1b1539f29dc61081bc354341c0d4a8afcf79950d0c0387",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-comms": {
+      "sourcePath": "skills/basemind-comms/SKILL.md",
+      "sourceSha256": "9f3945a135baa028551a7565321eb99a13900a84acfde702c48cd2cc01a75d24",
+      "outputSha256": "997bb8e93055da6e6c33b04c45bbf746109bde97093fa34ad97f30f60f4782d7",
+      "adaptations": [
+        "R4"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-comms/SKILL.md",
+          "sourceSha256": "9f3945a135baa028551a7565321eb99a13900a84acfde702c48cd2cc01a75d24",
+          "outputSha256": "997bb8e93055da6e6c33b04c45bbf746109bde97093fa34ad97f30f60f4782d7",
+          "contentHash": "Content-Hash: blake3:c531605b7fb374fee196d1e1aa84adc4367c910f688940427d96d6ea911f68cf",
+          "adaptations": [
+            "R4"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-comms/index.md",
+          "sourceSha256": "39ad02ce5fc71fbe4caa18b1e236d6354ab78c92eef920ebff065be962810896",
+          "outputSha256": "39ad02ce5fc71fbe4caa18b1e236d6354ab78c92eef920ebff065be962810896",
+          "contentHash": "Content-Hash: blake3:1f4c85e59d0f15815c557a01a4f4f34cac89c4d996444d7a515323d04876b3a6",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-doctor": {
+      "sourcePath": "skills/basemind-doctor/SKILL.md",
+      "sourceSha256": "dc14686db0de3ba3cc2bca1cf38e00f7005c0a86b0e5e095c724b2ca3b868ae7",
+      "outputSha256": "6e040dcb11f38e9c23b1e52104af554fdb0d1192d55c4ce80c86232caff54087",
+      "adaptations": [
+        "R1",
+        "R3",
+        "R5"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-doctor/SKILL.md",
+          "sourceSha256": "dc14686db0de3ba3cc2bca1cf38e00f7005c0a86b0e5e095c724b2ca3b868ae7",
+          "outputSha256": "6e040dcb11f38e9c23b1e52104af554fdb0d1192d55c4ce80c86232caff54087",
+          "contentHash": "Content-Hash: blake3:83b5000579dd4c2aaba6771417eda7ec8b4b2950c8c35f8cb1a3a2d7ab626e57",
+          "adaptations": [
+            "R1",
+            "R3",
+            "R5"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-doctor/index.md",
+          "sourceSha256": "f085f331fff933b42b63c0ee58a24c8057973499268048b80aa3cb7b2d5422d8",
+          "outputSha256": "f085f331fff933b42b63c0ee58a24c8057973499268048b80aa3cb7b2d5422d8",
+          "contentHash": "Content-Hash: blake3:75afd5b88662db30aeeecd9adb117b371379d729068d0b603c643c278c53bb0c",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-documents": {
+      "sourcePath": "skills/basemind-documents/SKILL.md",
+      "sourceSha256": "473ffe188e9fcd422f3996b739bd12f3585301e3dc355b12b7cee94e65a30618",
+      "outputSha256": "473ffe188e9fcd422f3996b739bd12f3585301e3dc355b12b7cee94e65a30618",
+      "adaptations": [],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-documents/SKILL.md",
+          "sourceSha256": "473ffe188e9fcd422f3996b739bd12f3585301e3dc355b12b7cee94e65a30618",
+          "outputSha256": "473ffe188e9fcd422f3996b739bd12f3585301e3dc355b12b7cee94e65a30618",
+          "contentHash": "Content-Hash: blake3:19efbf649c5065c68c50c19b030b2a19d8a25605b0d73941cfd03a5ee567f8c8",
+          "adaptations": []
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-documents/index.md",
+          "sourceSha256": "629a988f048eec7b72ee2e36d60ec10d74d0457dce515c702cb76e846a82f567",
+          "outputSha256": "629a988f048eec7b72ee2e36d60ec10d74d0457dce515c702cb76e846a82f567",
+          "contentHash": "Content-Hash: blake3:04b5a2cd982c30407063cde9289b4226f00a9b0aa0389e10c225ff01c0861179",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-git-history": {
+      "sourcePath": "skills/basemind-git-history/SKILL.md",
+      "sourceSha256": "994a8fa072e461528ac60c641ef3d887b4ecab4d50b58573dbbccd119887f725",
+      "outputSha256": "994a8fa072e461528ac60c641ef3d887b4ecab4d50b58573dbbccd119887f725",
+      "adaptations": [],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-git-history/SKILL.md",
+          "sourceSha256": "994a8fa072e461528ac60c641ef3d887b4ecab4d50b58573dbbccd119887f725",
+          "outputSha256": "994a8fa072e461528ac60c641ef3d887b4ecab4d50b58573dbbccd119887f725",
+          "contentHash": "Content-Hash: blake3:b0950be911f013ca357e4427590c291b08d620ffc3e80c32ffd0a834df433b7c",
+          "adaptations": []
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-git-history/index.md",
+          "sourceSha256": "f731af7c342a36aa3117d7832c01af90e9abbb2610ee0eee1b393d3ce2dff5e5",
+          "outputSha256": "f731af7c342a36aa3117d7832c01af90e9abbb2610ee0eee1b393d3ce2dff5e5",
+          "contentHash": "Content-Hash: blake3:d7f4f970c3596adfdd3ac7737c55518347dda19adef1be43a8511ff975a16804",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-multi-agent-room": {
+      "sourcePath": "skills/basemind-multi-agent-room/SKILL.md",
+      "sourceSha256": "1d6f9562a2b77783991fbb39dc5c78cc343a85c930ea35d65d1e525bd2a281ca",
+      "outputSha256": "552d0bdfd25f531128f85920dbc5b4c3f9f3e220862a4bdd4ae18e97e200b7ce",
+      "adaptations": [
+        "R7"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-multi-agent-room/SKILL.md",
+          "sourceSha256": "1d6f9562a2b77783991fbb39dc5c78cc343a85c930ea35d65d1e525bd2a281ca",
+          "outputSha256": "552d0bdfd25f531128f85920dbc5b4c3f9f3e220862a4bdd4ae18e97e200b7ce",
+          "contentHash": "Content-Hash: blake3:d85b007c1d994f89748a775d619758e63105be84f62c2e5578ab1f193df5f526",
+          "adaptations": [
+            "R7"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-multi-agent-room/index.md",
+          "sourceSha256": "5242f5c83d178972a311fb5a8d3a1b564993cfd86e9e0772bb442b71e108418e",
+          "outputSha256": "5242f5c83d178972a311fb5a8d3a1b564993cfd86e9e0772bb442b71e108418e",
+          "contentHash": "Content-Hash: blake3:3a11ea8a19b617bf806e1973106cbf556d8a886724b6c72482d97c8aecfb4db4",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-scan": {
+      "sourcePath": "skills/basemind-scan/SKILL.md",
+      "sourceSha256": "2297f93c79b8a623ff2fc10b37423b2bff1656c515d34b1b96e8e0907cea0050",
+      "outputSha256": "5eeb13fcc5bbcf554c4dc3178cebf3853b0ea75ebfabcabd69922e4ebe4facb9",
+      "adaptations": [
+        "R1",
+        "R8"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-scan/SKILL.md",
+          "sourceSha256": "2297f93c79b8a623ff2fc10b37423b2bff1656c515d34b1b96e8e0907cea0050",
+          "outputSha256": "5eeb13fcc5bbcf554c4dc3178cebf3853b0ea75ebfabcabd69922e4ebe4facb9",
+          "contentHash": "Content-Hash: blake3:fa2b9f49ce3d009ebfecf51f1748703195fde17ec79c0de5ab39afb36097e508",
+          "adaptations": [
+            "R1",
+            "R8"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-scan/index.md",
+          "sourceSha256": "38297c946f3753f512928ecb024548f7e9907f43d89c164877e153024288cfc6",
+          "outputSha256": "38297c946f3753f512928ecb024548f7e9907f43d89c164877e153024288cfc6",
+          "contentHash": "Content-Hash: blake3:7899d48f30a536e88016ca3ea56712256508aa70836b3ac6a0de7ca4f43c3ce4",
+          "adaptations": []
+        }
+      }
+    },
+    "basemind-stats": {
+      "sourcePath": "skills/basemind-stats/SKILL.md",
+      "sourceSha256": "27c9da31405e544ba714721b9e8d5f0222b1a864a10d8ba3d3d93e264597d94b",
+      "outputSha256": "f26353f51c0b1a85351fed1ed8435832fb4e6c7bf59a7e05c781a3c8c4ac2b91",
+      "adaptations": [
+        "R1",
+        "R5"
+      ],
+      "files": {
+        "SKILL.md": {
+          "sourcePath": "skills/basemind-stats/SKILL.md",
+          "sourceSha256": "27c9da31405e544ba714721b9e8d5f0222b1a864a10d8ba3d3d93e264597d94b",
+          "outputSha256": "f26353f51c0b1a85351fed1ed8435832fb4e6c7bf59a7e05c781a3c8c4ac2b91",
+          "contentHash": "Content-Hash: blake3:b905b3219fdcef28a70eadb00998025895c89c0ea380dd77cc4a3d67de8917de",
+          "adaptations": [
+            "R1",
+            "R5"
+          ]
+        },
+        "index.md": {
+          "sourcePath": "skills/basemind-stats/index.md",
+          "sourceSha256": "2a926a0b65a2282501bc91858d3a1df72031e31738fe1336947e58850f090989",
+          "outputSha256": "2a926a0b65a2282501bc91858d3a1df72031e31738fe1336947e58850f090989",
+          "contentHash": "Content-Hash: blake3:005b1a4c3bacbe599cd40b27d12dbfb0cd4ecca0e92b904e0a9a6e1259b95d42",
+          "adaptations": []
+        }
+      }
+    }
+  }
+}

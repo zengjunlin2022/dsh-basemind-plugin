@@ -122,3 +122,55 @@ test('an unknown discoveryRoot warns once and falls back to agent', () => {
   assert.equal(warnings.length, 1)
   assert.match(warnings[0], /discoveryRoot/)
 })
+
+test('binaryDownload defaults to true so a fresh install can self-provision', () => {
+  assert.equal(DEFAULTS.binaryDownload, true)
+  assert.equal(resolveConfig({}).binaryDownload, true)
+  assert.equal(resolveConfig({ binaryDownload: 'false' }).binaryDownload, false)
+  assert.equal(resolveConfig({ binaryDownload: true }).binaryDownload, true)
+})
+
+test('an invalid binaryDownload warns and stays enabled', () => {
+  const { warnings, logger } = recorder()
+  assert.equal(resolveConfig({ binaryDownload: 1 }, { logger }).binaryDownload, true)
+  assert.equal(warnings.length, 1)
+})
+
+test('binaryPolicy defaults to exact and accepts only the three documented values', () => {
+  assert.equal(DEFAULTS.binaryPolicy, 'exact')
+  assert.equal(resolveConfig({}).binaryPolicy, 'exact')
+  for (const policy of ['exact', 'minor', 'any']) {
+    assert.equal(resolveConfig({ binaryPolicy: policy }).binaryPolicy, policy)
+  }
+})
+
+test('an unknown binaryPolicy warns once and falls back to exact', () => {
+  const { warnings, logger } = recorder()
+  assert.equal(resolveConfig({ binaryPolicy: 'semver' }, { logger }).binaryPolicy, 'exact')
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /binaryPolicy/)
+})
+
+test('binaryFallback defaults to true and accepts the off switch', () => {
+  assert.equal(DEFAULTS.binaryFallback, true)
+  assert.equal(resolveConfig({}).binaryFallback, true)
+  assert.equal(resolveConfig({ binaryFallback: false }).binaryFallback, false)
+  assert.equal(resolveConfig({ binaryFallback: 'false' }).binaryFallback, false)
+})
+
+test('skills, bootstrap and cliTool default to true and can each be disabled', () => {
+  for (const key of ['skills', 'bootstrap', 'cliTool']) {
+    assert.equal(DEFAULTS[key], true, `${key} default`)
+    assert.equal(resolveConfig({})[key], true)
+    assert.equal(resolveConfig({ [key]: false })[key], false)
+    assert.equal(resolveConfig({ [key]: 'false' })[key], false)
+  }
+})
+
+test('the six new settings are included in the frozen resolved object', () => {
+  const settings = resolveConfig({})
+  for (const key of ['binaryDownload', 'binaryPolicy', 'binaryFallback', 'skills', 'bootstrap', 'cliTool']) {
+    assert.equal(Object.hasOwn(settings, key), true, `${key} must be resolved`)
+  }
+  assert.equal(Object.isFrozen(settings), true)
+})

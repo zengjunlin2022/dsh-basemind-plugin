@@ -15,8 +15,17 @@
  */
 import { Buffer } from 'node:buffer'
 
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { createBinaryManager } from './lib/binary/manager.js'
+import { createCliTool } from './lib/cli-tool.js'
 import { resolveConfig } from './lib/config.js'
-import { readVersion, resolveLaunch, scrubEnv } from './lib/executable.js'
+import { resolveLaunch, scrubEnv } from './lib/executable.js'
+import { bootstrapText, registerBootstrapSection } from './lib/prompt/bootstrap.js'
+import { createBasemindSkillProvider } from './lib/skills/provider.js'
+import { renderStatus, statusReport } from './lib/status.js'
+import { UPSTREAM } from './lib/upstream.js'
 import { createMcpSession } from './lib/mcp-session.js'
 import { publicToolName } from './lib/schema.js'
 import { createStdioClient } from './lib/stdio-client.js'
@@ -36,6 +45,9 @@ const RETRY_DELAYS_MS = [5_000, 30_000, 300_000]
 
 /** Fallback placement of the MCP server instructions section. */
 const MCP_SERVERS_ORDER_FALLBACK = 3_100
+
+/** Package root that owns the vendored `skills/` directory. */
+const PACKAGE_ROOT = path.dirname(fileURLToPath(import.meta.url))
 
 /**
  * Activate the plugin.
@@ -68,9 +80,43 @@ export function apply(ctx, config) {
     syncChain: Promise.resolve(),
     retryIndex: 0,
     retryTimer: undefined,
+    /** The verified binary selection shared by the relay, CLI tool and status. */
+    selection: undefined,
+    skillsRegistered: false,
+    bootstrapRegistered: false,
+    statusRegistered: false,
+    /** Last selection line already logged, so a replay does not spam the log. */
+    selectionLogged: undefined,
   }
 
   const initController = new AbortController()
+
+  /**
+   * One availability signal for every surface: skills, the CLI tool and the
+   * bootstrap section appear only while the relay that serves the tools is up.
+   */
+  const readiness = {
+    ready: false,
+    onChange(listener) {
+      readiness.listeners.add(listener)
+      return () => readiness.listeners.delete(listener)
+    },
+    listeners: new Set(),
+    ok() {
+      return state.ready && state.selection?.ok === true && state.selection?.compatible !== false
+    },
+    notify() {
+      for (const listener of [...readiness.listeners]) {
+        try {
+          listener()
+        } catch (error) {
+          logger?.debug?.(`[dsh-basemind-plugin] an availability listener threw: ${message(error)}`)
+        }
+      }
+    },
+  }
+
+  const binaryManager = createBinaryManager({ ctx, config: settings, logger })
 
   const pool = createWorkspacePool({
     config: settings,
@@ -89,12 +135,29 @@ export function apply(ctx, config) {
    * version-independent launch + MCP initialize handshake.
    */
   async function createSession(root, poolSignal) {
+    const selection = await binaryManager.select(root, poolSignal)
+    if (selection?.ok !== true) {
+      throw new Error(`BaseMind binary unavailable: ${selection?.reason ?? 'unknown reason'}`)
+    }
+    if (state.selection?.path !== selection.path || state.selection?.source !== selection.source) {
+      state.selection = selection
+      const summary = selection.version === undefined
+        ? `${selection.source} -> ${selection.path} (version unverified)`
+        : `${selection.source} -> ${selection.path} (BaseMind ${selection.version})`
+      if (state.selectionLogged !== summary) {
+        state.selectionLogged = summary
+        logger?.info?.(`[dsh-basemind-plugin] binary: ${summary}`)
+      }
+      readiness.notify()
+    }
+    void binaryManager.noteWorkspace?.(root, selection)
     const launch = await resolveLaunch({
       config: settings,
       ctx,
       root,
       signal: poolSignal,
       logger,
+      selection,
     })
     const client = createStdioClient({
       argv: launch.argv,
@@ -245,7 +308,30 @@ export function apply(ctx, config) {
       const existing = ctx.tools.get(publicName)
       if (existing !== undefined && existing !== null) return publicName
     }
+    const cli = cliDefinition()
+    if (cli !== undefined && !owned.has(cli.name)) {
+      const existing = ctx.tools.get(cli.name)
+      if (existing !== undefined && existing !== null) return cli.name
+    }
     return undefined
+  }
+
+  /**
+   * The argv-only CLI adapter, present only when a verified binary is serving the
+   * MCP tools. `any` mode leaves the CLI contract unverified, so it stays off.
+   */
+  function cliDefinition() {
+    if (!settings.cliTool) return undefined
+    const selection = state.selection
+    // `verified` folds in the policy and the legacy npx case: only a pinned,
+    // version-checked binary may expose the CLI contract and the skills text.
+    if (selection?.ok !== true || selection.verified !== true) return undefined
+    try {
+      return createCliTool({ serverName, binary: selection, ctx, config: settings, logger })
+    } catch (error) {
+      logger?.warn?.(`[dsh-basemind-plugin] the BaseMind CLI tool is unavailable: ${message(error)}`)
+      return undefined
+    }
   }
 
   /** Dispose a tool generation in reverse registration order. */
@@ -321,6 +407,8 @@ export function apply(ctx, config) {
   function syncTools(rawTools, { initial = false } = {}) {
     if (state.disposed) return { ok: false }
     const definitions = definitionsFor(rawTools)
+    const cli = cliDefinition()
+    if (cli !== undefined) definitions.push(cli)
     if (definitions.length === 0) {
       logger?.warn?.('[dsh-basemind-plugin] BaseMind reported no tools; nothing to register')
       return { ok: false }
@@ -424,7 +512,11 @@ export function apply(ctx, config) {
       }
       registerInstructions(session.instructions)
       registerResources()
+      registerSkills()
+      registerBootstrap()
       state.ready = true
+      readiness.ready = true
+      readiness.notify()
       logger?.debug?.(
         `[dsh-basemind-plugin] ready with ${String(state.generation?.definitions.length ?? 0)} tools from ${root}`,
       )
@@ -493,23 +585,84 @@ export function apply(ctx, config) {
   }
 
   /**
-   * One background `<exe> --version` probe for diagnostics only. It never gates a
-   * feature: the exposed tool set is whatever `tools/list` reports.
+   * Register the vendored official skills behind `ctx.skills`, once. The provider
+   * returns an empty catalog until a verified binary is actually serving tools.
    */
-  async function probeVersion() {
+  function registerSkills() {
+    if (state.skillsRegistered || !settings.skills) return
+    if (state.selection?.verified !== true) return
+    const skills = ctx.get?.('skills')
+    if (skills === undefined || skills === null) {
+      logger?.debug?.('[dsh-basemind-plugin] ctx.skills is unavailable; official skills are not registered')
+      return
+    }
     try {
-      const launch = await resolveLaunch({
-        config: settings,
-        ctx,
-        root: ctx.workingDirectory.defaultDirectory,
-        logger,
+      const control = {}
+      const provider = createBasemindSkillProvider({ control, readiness, root: PACKAGE_ROOT, logger })
+      const dispose = skills.registerProvider((registered) => {
+        control.invalidate = registered?.invalidate
+        return provider
       })
-      const version = await readVersion({ ctx, exe: launch.exe, logger })
-      if (version !== undefined) {
-        logger?.debug?.(`[dsh-basemind-plugin] BaseMind launcher reports ${version} (${launch.exe})`)
-      }
+      state.disposers.push(dispose)
+      state.skillsRegistered = true
+      const stopWatching = readiness.onChange(() => control.invalidate?.())
+      state.disposers.push(stopWatching)
     } catch (error) {
-      logger?.debug?.(`[dsh-basemind-plugin] could not read the BaseMind version: ${message(error)}`)
+      logger?.warn?.(`[dsh-basemind-plugin] official skills could not be registered: ${message(error)}`)
+    }
+  }
+
+  /** Register the bootstrap prompt section, once. Its text is empty until ready. */
+  function registerBootstrap() {
+    if (state.bootstrapRegistered || !settings.bootstrap) return
+    try {
+      const dispose = registerBootstrapSection(ctx, {
+        serverName,
+        order: sectionOrder() + 10,
+        logger,
+        getText: () => {
+          if (!readiness.ok()) return ''
+          const selection = state.selection
+          const verified = settings.binaryPolicy !== 'any' && selection?.verified === true
+          return bootstrapText({
+            ready: true,
+            verified,
+            serverName,
+            version: verified ? selection?.version ?? UPSTREAM.version : undefined,
+            source: verified ? selection?.source : undefined,
+            cliToolName: verified && settings.cliTool ? publicToolName(serverName, 'cli') : null,
+            skills: settings.skills,
+          })
+        },
+      })
+      state.disposers.push(dispose)
+      state.bootstrapRegistered = true
+    } catch (error) {
+      logger?.warn?.(`[dsh-basemind-plugin] the bootstrap prompt section is unavailable: ${message(error)}`)
+    }
+  }
+
+  /** Register the human `/basemind-status` command, once, when DSH offers commands. */
+  function registerStatusCommand() {
+    if (state.statusRegistered) return
+    const commands = ctx.get?.('commands')
+    if (commands === undefined || commands === null) {
+      logger?.debug?.('[dsh-basemind-plugin] ctx.commands is unavailable; /basemind-status is not registered')
+      return
+    }
+    try {
+      const dispose = commands.register({
+        name: 'basemind-status',
+        description: "Show this machine's BaseMind binary, its version, and whether it matches this plugin",
+        handler: async () => {
+          const report = await statusReport({ manager: binaryManager, config: settings, platform: process.platform })
+          return { kind: 'success', text: renderStatus(report) }
+        },
+      })
+      state.disposers.push(dispose)
+      state.statusRegistered = true
+    } catch (error) {
+      logger?.warn?.(`[dsh-basemind-plugin] /basemind-status is unavailable: ${message(error)}`)
     }
   }
 
@@ -517,6 +670,13 @@ export function apply(ctx, config) {
   async function shutdown() {
     state.disposed = true
     initController.abort()
+    // Stop a managed download first: relays are cheap to terminate, but a
+    // half-written asset would linger in the cache until the next sweep.
+    try {
+      await binaryManager.dispose()
+    } catch (error) {
+      logger?.warn?.(`[dsh-basemind-plugin] disposing the binary manager threw: ${message(error)}`)
+    }
     if (state.retryTimer !== undefined) {
       clearTimeout(state.retryTimer)
       state.retryTimer = undefined
@@ -546,6 +706,8 @@ export function apply(ctx, config) {
       logger?.warn?.(`[dsh-basemind-plugin] relay cleanup failed: ${message(error)}`)
     }
     state.primarySession = undefined
+    readiness.ready = false
+    readiness.notify()
   }
 
   let retryListenerDispose
@@ -559,8 +721,8 @@ export function apply(ctx, config) {
       }
       void adoptAgentRoot(agent)
     })
+    registerStatusCommand()
     void ensurePrimary()
-    void probeVersion()
     return async () => {
       try {
         retryListenerDispose?.()
@@ -575,7 +737,10 @@ export function apply(ctx, config) {
     // Best-effort fail-fast: a loader that awaits `apply` observes the preflight
     // failure. A loader that does not await keeps the background behaviour.
     return (async () => {
-      await resolveLaunch({ config: settings, ctx, root: ctx.workingDirectory.defaultDirectory, signal: undefined, logger })
+      const selection = await binaryManager.select(ctx.workingDirectory.defaultDirectory, undefined)
+      if (selection?.ok !== true) {
+        throw new Error(`BaseMind binary unavailable: ${selection?.reason ?? 'unknown reason'}`)
+      }
       return effectResult
     })()
   }

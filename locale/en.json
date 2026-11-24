@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "BaseMind (workspace-aware)",
-    "description": "Expose BaseMind's per-workspace code intelligence to every session without configuring an MCP server."
+    "description": "Expose BaseMind's per-workspace code intelligence to every session without configuring an MCP server: official skills, a managed binary and a read-only CLI bridge."
   }
 }
