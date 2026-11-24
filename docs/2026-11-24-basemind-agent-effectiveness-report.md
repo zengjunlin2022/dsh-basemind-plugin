@@ -36,8 +36,40 @@
 | `main` | `bba170c`（未變） |
 | branch dispatch | `45382691537`、`45383311910` 兩次皆 failure；ubuntu success、macOS／Windows 失敗 |
 | 業務 repo 指紋 | Vue `f9fd1a63`／status `e3b0c442`；Java `f6f2988d`／status `52176b2a` → 與 §7 相同 |
-| 測試 Profile tarball | `ad5d8083…`（19:17）**早於 3B**：bootstrap 仍 `glob/bash`、index.js 無 `pool.forget` |
+| 本機 HEAD | **`d88a746`**（2026-11-24 20:05，工作區乾淨，ahead origin/main 1；未 push） |
+| 測試 Profile tarball | `ad5d8083…`（19:17）**早於 3B**：bootstrap 仍 `glob/bash`、index.js 無 `pool.forget`；需從 `d88a746` 重建 |
 | `D:/_bm_phase3/exchange.txt` | 538 bytes、含 `Set-Cookie`（web auth cookie）→ 敏感暫存 |
+
+> 上表是 **19:49 的快照**；最新狀態見 §11.8（20:09–20:35 續跑）與 §11.9（20:36 Review）。
+
+### 0.2 完成度判定（2026-11-24 20:40）
+
+**Phase 3 整體需求：尚未完成。** 目前完成的是「Phase 0 harness、D1a、3B、baseline 重建、CI 修復」，不是 Task A–J 的全部。
+
+| 區塊 | 狀態 | 證據 |
+| --- | --- | --- |
+| Phase 1 | 完成（POSIX 實機證據仍有遺留） | Phase 1 報告、CI |
+| Phase 2 | **部分** | branch managed `45391479254` 三平台全綠；但 PR #1 未 merge、main 仍 `bba170c`；Desktop D3–D15 NOT RUN；`compat.yml` 未遠端跑 |
+| 3A Lifecycle | **NOT RUN** | 僅 P3-06 PARTIAL、P3-14 deterministic、P3-25 PASS；其餘待真實 Agent |
+| 3B Deterministic | **完成** | F1/F2/F3＋測試，446/436/0/10 |
+| 3C/3D Benchmark | **NOT RUN** | 0 tokens；無 `benchmark/` 任務／Ground Truth／結果 |
+| 3E Final | **NOT RUN** | README／CHANGELOG／Desktop D6/D9/D10/D11 未做 |
+| Release Readiness | **未達** | PR 未 merge、main 未變、tag/publish 未做 |
+
+**這一輪已完成的可交付物**：
+- D1a：workflow fix＋PR #1（head `39ef670`、changed_files=2）。
+- 3B：F1 relay 恢復、F2 bootstrap 措辭、F3 靜態守衛＋回歸。
+- baseline：`d88a746` 的 tarball `173e56dd…` 已重裝到兩個 profile（F1/F2 均在）。
+- CI：`39ef670` 的 branch dispatch `45391479254` 三平台全綠；PR CI `45391466446` success。
+- 模型 smoke：**仍受阻**（`ACCOUNT_SIGN_IN_REQUIRED`／codex `NO_ADAPTER`）；未消耗 token。
+
+**尚未完成、不能宣稱完成的事**：
+- PR #1 merge、`git pull --rebase`、D1b 對 main dispatch。
+- 測試 Profile 的模型登入／API key（Web API driver 的前置）。
+- 3A 全部（skills catalog／正文、bootstrap、resume、`/compact`、R1/R2、subagent、Vue/Java 邊界、等價性）。
+- `benchmark/` 任務／Ground Truth／staged repo／scoring；3C Pilot 12；3D 24 no-reuse。
+- 3E README／CHANGELOG、Desktop D6/D9/D10/D11、最終 Review。
+- local `d88a746` push（目前 ahead 1、未 push）；本報告未提交。
 
 ---
 
@@ -327,7 +359,7 @@ test/workflows.test.mjs 新增：
    - 3A／3C／3D 全部依賴此項。**2026-11-24 20:00 已確認：模型路由全部可用**；下一步在測試 Profile 設定 route 並 smoke。
 2. **重建並重裝 plugin tarball**
    - 目前 profiles 安裝的是 19:17 的 tarball，**不含 3B 的 F1／F2／F3**；3A／benchmark 會測到舊 bootstrap 字與舊 `index.js`。
-   - 在 3B diff 經你 review／commit（或至少凍結樹）後：`npm pack --pack-destination D:/_bm_phase3`，再對 `bm-bench-a`／`bm-bench-b` 重跑 `dsh plugin --profile <p> add <tgz> --save-exact`，記錄新 SHA256。
+   - 3B 已於 2026-11-24 20:05 commit `d88a746`（工作區乾淨）：直接從此 commit `npm pack --pack-destination D:/_bm_phase3`，再對 `bm-bench-a`／`bm-bench-b` 重跑 `dsh plugin --profile <p> add <tgz> --save-exact`，記錄新 SHA256。
    - 若要在 commit 前先跑，必須在結果標明「基準是未提交樹」，且 A/B 兩組用同一 tarball。
 3. **3A 的 Web API driver（或接受替代方案）**
    - 原報告 §2.2：`/api/*` 全 404，沒有可用的 session driver；3A-2／3A-3／3A-4／3A-7 無法自動。
@@ -367,7 +399,7 @@ test/workflows.test.mjs 新增：
 
 1. **CI 修復**（已授權）：修 macOS／Windows path → 追加測試 → 更新 PR branch（scope 擴大到 `test/integration-managed.test.mjs`）→ PR CI／dispatch 綠。
 2. **Merge PR #1**（你手動）→ `git pull` main。
-3. **3B commit 與 tarball**：選 A 或 B（見 11.5.1）。
+3. **3B 已 commit `d88a746`**：直接 `npm pack`／重裝 profiles（不再需要選 A/B）。
 4. **模型 smoke**（路由已確認可用）：測試 Profile 設 `deepseek-account`＋Codex plugin；單輪 smoke。
 5. **Web API driver**（已授權）：建 driver → 3A → 3A-9 → 3C → 3D → 3E。
 6. **D1b**：merge 後對 `main` dispatch；清理暫存。
@@ -387,7 +419,7 @@ test/workflows.test.mjs 新增：
 - 3A harness：**已授權建 Web API driver**。
 - CI 缺陷：**已授權修**；依你的順序「先修 CI 再 merge」。
 - PR #1：**先修 CI 再 merge**。
-- 3B commit／pack 順序：**待你選 A 或 B**（見 11.5.1）。
+- 3B commit／pack 順序：**已完成 commit `d88a746`**；下一步從此 commit 重建 tarball／重裝（見 11.5.1 的 A 路徑）。
 - `exchange.txt`／`jar.txt`／`web-a.log`：**已刪除**。
 
 ### 11.7 本輪未做的事（避免誤解）
@@ -398,3 +430,195 @@ test/workflows.test.mjs 新增：
 - 沒有 merge PR #1；D1b 未執行。
 - 沒有修 macOS／Windows CI 缺陷（新發現）。
 - 沒有重建 tarball、沒有重裝 profiles（所以 profiles 仍是 pre-3B）。
+
+### 11.8 2026-11-24 20:09–20:35 續跑（baseline 重建、模型 smoke、CI 修復）
+
+**本節由 Execution Agent 於第二輪續跑後追加；§11.1–§11.7 的判定不變。**
+
+#### (1) Gate 0 — PASS
+
+| 項目 | 證據 |
+| --- | --- |
+| token | User env = set（process env stale；依 §30.5 以 PowerShell 讀取，只印 set/unset） |
+| GET /repos/… | 200；GET /actions/workflows 200 |
+| HEAD | d88a746bffa4cc6aba7cb95f00b73368d9ecc5bb（local main ahead 1；origin/main bba170c） |
+| npm test baseline | tests 446／pass 436／fail 0／skipped 10（69,614 ms） |
+
+#### (2) Tarball 重建與 profiles 重裝 — PASS
+
+- 舊包保留：D:/_bm_phase3/dsh-basemind-plugin-0.2.0.pre3b.tgz = ad5d8083…8801dcb
+- 新包（d88a746）：dsh-basemind-plugin-0.2.0.tgz = **173e56dd1da4940e9eeab0848e9d6673fda84354cf49ccff3c16cf17d7cb1955**
+- **坑**：pnpm 對「同路徑 file: 依賴」會回 Already up to date 而不換內容；必須用新檔名（…-d88a746.tgz）add 才會重新解析。
+- 兩組驗證（~/.dsh/profiles/<p>/node_modules/dsh-basemind-plugin/）：
+  - lib/prompt/bootstrap.js 含 shell tools = 1（F2 已生效）
+  - index.js 含 pool.forget = 1（F1 已生效）
+
+#### (3) 模型設定 — 設定完成；smoke 受阻
+
+- 兩個 profile patch 加入 agent-default-model → deepseek-account／deepseek-flash（--dump-config 已驗證）。
+- dsh-codex-subscription@3.2.29 已裝入兩個 profile（dump 可見 codex 條目）。
+- 兩個 profile 的 web app 都能 boot，無 activation warning；但 **spawned CLI 取不到 app 內憑證**：
+
+| 路由 | smoke 結果 |
+| --- | --- |
+| deepseek-account／deepseek-flash | ACCOUNT_SIGN_IN_REQUIRED：Sign in to DeepSeek to use the account provider. The request destination must allow account authentication. |
+| openai-codex／gpt-6.1-sol（shipped headless ＋ 插入 profile 的 codex plugin） | codex-subscription pending (waiting for service: credentials) → NO_ADAPTER |
+
+- 依指示未以其他模型替代；**模型 token 消耗仍為 0**；3A／3C／3D 仍 **NOT RUN**。
+- 結論：解鎖方式只有兩條——(a) 在已登入的 web app 內建 Web API driver；(b) 由 credentials service 寫入 DEEPSEEK_API_KEY。
+
+#### (4) CI 修復 — 已實施並本地驗證
+
+- 遠端 commit **39ef670c982c9c108014bb09b8cb1b1c7568dc9e**（parent 2be18f3），**只改 test/integration-managed.test.mjs（+52/−2）**。
+- normalizeRoot → 新增 resolveRealPath：strip \\?\ → path.resolve → realpathSync.native（不存在時 fallback 原路徑）。
+- M4 version-shim：fake local launcher 改在 resolveRealPath(ROOT) 的**真實長路徑**建立；guard（空格／metacharacter）保留、未放寬、未 skip。
+- 新增 unit test（無 skip）：verbatim 前綴、..、空字串、子目錄不符、macOS /var↔/private/var、win32 temp 前綴。
+- 本機 worktree（detached 2be18f3）：node --test **443 tests／433 pass／0 fail／10 skip**、npm run check 綠；**未**下載 managed 套件（完整驗證交給 dispatch）。
+
+#### (5) 遠端 CI 驗證 — 三平台全綠
+
+| 項目 | 結果 |
+| --- | --- |
+| branch dispatch run 45391479254 | plan success、ubuntu-latest success、windows-latest success、macos-15 success → **ALL GREEN** |
+| PR CI run 45391466446（pull_request） | success |
+| PR #1 | open、head 39ef670、changed_files=2、mergeable=true、mergeable_state=clean |
+
+**停點：PR 可 merge（本輪不 merge、不 push main、無 local commit）。**
+
+#### (6) 邊界與清理
+
+- local HEAD 仍 d88a746；工作區只有本報告未提交；未改 Desktop profile；業務 repo 只讀。
+- 已移除暫存 worktree D:/_bm_phase3/wt-pr1；含 ?token= 的 boot log 與 cookie jar 等敏感暫存已刪除。
+
+#### (7) 仍未完成
+
+- **D1b**：PR merge 後才對 main dispatch（本輪不做）。
+- **3A／3C／3D**：被模型 driver 阻擋（§11.2 第 3 項），本輪未開始。
+- 3E 的 README／CHANGELOG／Desktop 驗收仍未做。
+
+### 11.9 Review 驗證（2026-11-24 20:36）
+
+- §11.8 的 PR／CI 宣稱已覆核：PR #1 head `39ef670`、changed_files=2、mergeable_state=clean；run `45391479254` 的 plan／ubuntu／windows／macos **全 success**；PR CI `45391466446` success。
+- CI 修復 diff 已審：`normalizeRoot → resolveRealPath`（strip `\\?\`、`path.resolve`、`realpathSync.native`，不存在時 fallback）；M4 fake launcher 改用真實長路徑；guard 未放寬、未 skip；新增 unit test。**未發現 blocking issue。**
+- Tarball `173e56dd…` 與兩個 profile 安裝內容已核對：`bootstrap.js` 含 `shell tools`、`index.js` 含 `pool.forget`。
+- **模型 smoke 的阻擋仍成立**：test profile 的 headless 取不到 app 內憑證（`ACCOUNT_SIGN_IN_REQUIRED`／codex `NO_ADAPTER`）。Desktop 已登入 ≠ 測試 Profile 已登入；需在測試 Profile 的 web app 登入，或由 credentials service 寫入 API key。Web API driver 只有在已登入的 web app 內才有意義。
+- 本機狀態：HEAD `d88a746`、工作區只有本報告未提交；未 push、未 merge；docs 與 `D:/_bm_phase3` 的 secret scan 無命中。
+- **結論**：從 CI 角度 PR #1 可 merge；merge 後你需 `git pull --rebase origin main` 把 `d88a746` 接到新 main，並完成模型登入／API key，才可進 3A。
+
+### 11.10 2026-11-24 20:39–21:10 續跑（第三輪）：D1b 前置未成立；模型路由可用（更正 §11.8）；3A harness 受限
+
+#### (1) Gate 0／baseline — PASS
+
+- token：User env = set（process env stale）；GET /repos 200；HEAD d88a746；npm test **446／436 pass／0 fail／10 skip**（44.2 s）。
+
+#### (2) D1b — BLOCKED（前置與宣稱不符）
+
+| 檢查 | 結果 |
+| --- | --- |
+| PR #1 | state=open、**merged=false**、head=39ef670、base=bba170c |
+| main ref | bba170c（未 merge） |
+| POST dispatch(ref=main) | **422** Invalid Argument — Line: 88, Col: 32: Unrecognized named-value: 'runner' |
+
+→ main 仍是舊 workflow；依禁止條款未 merge、未 push，D1b 維持 **PENDING**。
+
+#### (3) 模型路由 — 兩條都可用（**更正 §11.8**）
+
+§11.8 的「spawned CLI 取不到憑證」是 overlay 少插 credentials service 造成的誤判；補上 dsh-credentials-local 後：
+
+| 路由 | provider／model | effort | usage | 結果 |
+| --- | --- | --- | --- | --- |
+| DeepSeek | deepseek-official／deepseek-flash | high | 12,783（input 12,735／output 48） | completed，text "OK" |
+| GPT | openai-codex／gpt-6.1-sol | low | 13,178（input 13,173／output 5） | completed，text "OK" |
+
+- 累計模型 token 約 26k（2 次 smoke）；失敗的 probe 沒有 usage。
+
+#### (4) 3A harness 探測 — 未通過（plugin 在 headless 未生效）
+
+- 以 --patch 插入 profile 的 plugin build（file:// 與 overlay 目錄名稱兩種解析都試）：
+  - --dump-config 可見 id: dsh-basemind 的 row；
+  - runtime request/header 仍只有 **24 個原生工具、無 mcp__basemind__***；system message 3,130 bytes 無 bootstrap 段；無 skills catalog；
+  - 即使 discoveryRoot: default 亦相同。
+- 推定（未證實）：headless 的 agent 建立不會觸發 plugin 的 agent/created、也沒有 deployment default directory，relay 未啟動，且 plugin 未輸出 warning。
+- 結論：3A 仍需可用的 Web API driver。本輪已讀 client bundle：gateway 是自訂 remote-stream RPC（rpcId／rpc.open／RemoteStream／WebSocket），**driver 未完成**。
+
+#### (5) 未執行
+
+3A-2～3A-10、3A-9、3C、3D、3E（前置未成立）。
+
+#### (6) 需要的人工動作
+
+1. 在 GitHub merge PR #1（我不 merge），之後才能做 D1b。
+2. 決定 3A harness：完成 Web API driver（需先取得 gateway 契約），或授權 headless 之外的替代方案。
+
+#### (7) 邊界
+
+無 local commit／push／merge；未 merge PR；main 未改；Desktop profile 未改；業務 repo 未動；未輸出 token；測試 web 實例已停止，含 token 的暫存檔已刪除。
+
+
+### 11.11 2026-11-24 20:58–21:08 續跑（第四輪）：PR #1 merge、D1b 三平台全綠
+
+#### (1) merge 確認
+
+| 檢查 | 結果 |
+| --- | --- |
+| PR #1 | state=closed、**merged=true**、merge_commit=**9609872ec9b262be58fbebe1c66c7b4ca99ea037**、head=39ef670 |
+| origin/main（fetch 後） | 9609872ec（本機 HEAD 仍 d88a746，未 rebase／未 push） |
+| main workflow | 已可解析（先前 422 的 Line 88 runner 錯誤消失） |
+
+#### (2) D1b — PASS
+
+- POST dispatch(ref=main) → **204 accepted**。
+- run [45398697251](https://github.com/zengjunlin2022/dsh-basemind-plugin/actions/runs/45398697251)：conclusion=**success**、head=9609872ec。
+- jobs：plan the matrix **success**、managed install (ubuntu-latest) **success**、managed install (macos-15) **success**、managed install (windows-latest) **success**。
+
+→ P3-01 的 D1a＋D1b 兩段都成立：PR 已 merge、push 後無 invalid workflow、local test 綠、main dispatch 三平台全綠。
+
+#### (3) 3A Web API driver — 契約已定位（driver 尚未實作）
+
+從 app.asar 抽出原始碼（dsh-api-gateway、dsh-api-session-controller）後確認：
+
+- **unary**：Client 以 connection 的 RPC 呼叫，路徑 **/api**（endpoint＋named args）；Host 由 Gateway 驗證後派發。
+- **stream**：WebSocket **/api/remote.mux**（rpcId／open／item／end／cancel 帧）。
+- session controller 的 Remote 端點：list／search／create／selectModel／modelCatalog／openWorkspacePath／workspacePathApplications／rename／fork／prompt／attachment／updateQueue／cancel／page，另有 mode: stream 的端點。
+- 仍需補：unary 請求 envelope（peer、correlation）與 /api/remote.mux 握手細節後才能實作 driver。
+- 因此 **3A-2～3A-10 仍 NOT RUN**；3C／3D／3E 亦未開始。
+
+#### (4) 邊界
+
+無 local commit／push／merge／rebase；未改 main；Desktop profile 未改；業務 repo 未動；未輸出 token。
+
+### 11.12 2026-11-24 21:10–21:20 續跑（第五輪）：Web API driver 完成，3A-2 首次取得真實證據
+
+#### (1) Driver（新增 scripts/phase3/web-api.mjs）
+
+- 契約（來自 app.asar 原始碼）：unary 以 POST /api/<namespace>/<method>，body 為 { type: 'client-request', rpcId, method, payload: { args } }；回應 { rpcId, result: { ok, value } }；Peer 由已驗證連線提供，不在 payload。
+- args 是 **named 參數**：session/create、session/prompt 等都要包成 { request: {...} }（第一次直送 cwd 得到 gateway/arguments-invalid：missing "request"）。
+- 認證：GET /?token=… → 303 + dsh-auth cookie；之後帶 cookie 呼叫 /api。
+- 已封裝：exchangeToken、createClient（call／createSession／prompt／page／list／cancel）。
+
+#### (2) 3A-2 實測（profile bm-bench-b，Standard preset）
+
+- 建 session：sessionId session-25e9ef88-7ab2-47a1-aa06-639bb39871cf、**agentPreset=standard**。
+- prompt 受理：{ accepted: true }；兩輪完成（turn/end ×2）。
+- **冷啟動差異（重要）**：
+  | 請求 | 工具總數 | mcp__basemind__ | bootstrap |
+  | --- | --- | --- | --- |
+  | 第 1 輪 | 34 | **0** | 無 |
+  | 第 2 輪 | 56 | **19**（18 verb ＋ cli） | 有（system message 10,350 bytes） |
+- 第 2 輪 Agent 實際呼叫 index_status，回報 root = **\\?\D:\02_zengjunlin\github\dsh-basemind-plugin**（Win32 verbatim 前綴；與 CI 修復的是同一類問題），並指出索引仍在 scan/extract。
+- usage（整段 session）：input 32,787／output 1,211／cacheRead 54,912／**total 88,910**。
+- skills catalog：未觀察到（user/message 全部沒有 skill/catalog source）→ **P3-03 仍未取得證據**；需再查 catalog 注入時機或 provider 是否註冊。
+
+#### (3) 判定
+
+- P3-04／P3-05 的第 2 輪有初步證據（工具與 bootstrap 存在），但尚未做「載入 skill 正文」與「多輪不累積」的正式檢查 → 仍 **PARTIAL**。
+- 3A-3～3A-10、3A-9、3C、3D、3E **NOT RUN**。
+
+#### (4) 下一步（可直接續跑）
+
+1. 以「暖機後再量測」的方式重跑 3A-2（第一輪只暖機，第二輪起取證），並確認 skills catalog 的注入條件。
+2. 續做 3A-3（resume）、3A-4（/compact；可能需要 GUI 或 commands API）、3A-5（relay R1/R2）、3A-6（subagent／多 session）。
+3. 以 driver 建 benchmark runner：每 run 新 session、暖機一輪、記錄 usage、套 per-run 400k 守門。
+
+
+
