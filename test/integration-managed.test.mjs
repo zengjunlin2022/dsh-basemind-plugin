@@ -41,6 +41,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -809,8 +810,32 @@ function createRepository(name) {
  */
 function normalizeRoot(value) {
   if (typeof value !== 'string' || value.trim() === '') return null;
+  return resolveRealPath(value);
+}
+
+/**
+ * Resolve a path to its real, long form.
+ *
+ * Two platform differences make a raw string comparison wrong, both measured on real
+ * runners: macOS reports `/private/var/...` for a fixture created under `/var/...`, and
+ * Windows hands back an 8.3 short name (`C:\Users\RUNNER~1\...`) for a directory whose
+ * long form is `C:\Users\runneradmin\...`. `realpath` folds both to the same string, and
+ * the verbatim `\\?\` prefix that BaseMind adds for long paths is stripped on both sides.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function resolveRealPath(value) {
   const stripped = value.startsWith('\\\\?\\') ? value.slice(4) : value;
-  return path.resolve(stripped);
+  const absolute = path.resolve(stripped);
+  let resolved;
+  try {
+    resolved = realpathSync.native(absolute);
+  } catch {
+    // A path that does not exist yet cannot be resolved; compare it as written.
+    return absolute;
+  }
+  return resolved.startsWith('\\\\?\\') ? resolved.slice(4) : resolved;
 }
 
 /**
@@ -1281,7 +1306,11 @@ test('M3 a compatible local binary wins over the populated managed cache', { ski
 
 test('M4 a local binary with the wrong version falls back to the managed install', { skip: SKIP, timeout: TEST_TIMEOUT_MS }, async (t) => {
   assert.ok(state.selection, 'the cold install (M1) completed');
-  const fakeDir = path.join(ROOT, 'fake-local');
+  // The launcher is a .cmd on Windows, and cmd.exe cannot start one from a path with a
+  // space or a metacharacter. %TEMP% on a hosted runner is the 8.3 short name
+  // (C:\Users\RUNNER~1\...), so the fixture is created under the real, long path instead;
+  // the guard below then checks the path that is actually used, not the one we started from.
+  const fakeDir = path.join(resolveRealPath(ROOT), 'fake-local');
   mkdirSync(fakeDir, { recursive: true });
   const fakeBinary = process.platform === 'win32' ? path.join(fakeDir, 'basemind.cmd') : path.join(fakeDir, 'basemind');
   const olderVersion = '0.33.0';
@@ -1861,4 +1890,25 @@ test('the managed binary answers the real CLI verbs through the CLI adapter', { 
     `CLI: status ${metrics.cliStatusMs} ms, doctor ${metrics.cliDoctorMs} ms, ` +
       `overview ${metrics.cliOverviewMs} ms, explain ${metrics.cliExplainMs} ms`,
   );
+});
+
+test('root normalization folds the platform spellings of one workspace', () => {
+  const real = resolveRealPath(REPO_ROOT);
+  assert.equal(sameRoot(real, REPO_ROOT), true, 'the same directory compares equal');
+  assert.equal(sameRoot(`\\\\?\\${real}`, REPO_ROOT), true, 'a verbatim prefix is stripped');
+  assert.equal(sameRoot(path.join(REPO_ROOT, 'lib', '..'), REPO_ROOT), true, 'a .. segment is resolved');
+  assert.equal(sameRoot('', REPO_ROOT), false, 'an empty value never matches');
+  assert.equal(sameRoot(real, path.join(REPO_ROOT, 'lib')), false, 'a subdirectory is not the workspace');
+
+  // Measured on hosted runners: macOS reports /private/var/... for a fixture created under
+  // /var/..., and Windows resolves an 8.3 short name (C:\Users\RUNNER~1\...) to its long
+  // form. Both spellings name the same directory, so the comparison must fold them.
+  if (process.platform === 'darwin') {
+    assert.equal(sameRoot('/private/var', '/var'), true, 'macOS /var is /private/var');
+  }
+  if (process.platform === 'win32') {
+    const temp = os.tmpdir();
+    assert.equal(resolveRealPath(temp).startsWith('\\\\?\\'), false, 'the helper strips the verbatim prefix');
+    assert.equal(sameRoot(`\\\\?\\${resolveRealPath(temp)}`, temp), true, 'the temp root compares equal across spellings');
+  }
 });
