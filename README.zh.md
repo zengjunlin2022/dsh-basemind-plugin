@@ -254,7 +254,7 @@ DSH 對上游文字的適配只存在 `skills/.dsh-adapt.json`；用 `npm run sy
 
 | Gate | 命令 | 證明什麼 | 設定於 | 本次變更實際執行 |
 | --- | --- | --- | --- | --- |
-| 本機／單元 | `npm test` | 所有不需要真實 BaseMind 當受測對象的測試。兩個真實整合檔只有在 `PATH` 或 `BASEMIND_BIN` 找到相容 BaseMind 時才會真的跑，否則 skip。 | `ci.yml` | Windows x64（本機）：432 tests、422 pass、10 skipped（被 gate 的 managed 套件） |
+| 本機／單元 | `npm test` | 所有不需要真實 BaseMind 當受測對象的測試。兩個真實整合檔只有在 `PATH` 或 `BASEMIND_BIN` 找到相容 BaseMind 時才會真的跑，否則 skip。 | `ci.yml` | Windows x64（本機）：454 tests、444 pass、10 skipped（被 gate 的 managed 套件） |
 | 外部 binary 契約 | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | **由插件外部**安裝、用系統 `tar`／`unzip` 解開的 BaseMind 的 MCP／CLI 契約（`compat.yml`）。結構上測不到 managed 安裝。 | `compat.yml`（Ubuntu x64、macOS arm64、Windows x64） | **NOT RUN**（無 GitHub Actions 存取權；兩個套件在 `npm test` 內已對本機真實 0.34.0 實跑過） |
 | Managed 安裝 | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | 插件**自己的**路徑：真下載官方 asset、驗官方 SHA256、解完整 Release Tree、寫 layout-2 記錄、真跑 `basemind --version`、用該 managed binary 跑真 MCP relay（tools／resources）與真 CLI（`managed-binary.yml`）。 | `managed-binary.yml`（Windows x64、Linux x64、macOS arm64；Linux arm64 只能透過 `include_linux_arm64` 輸入啟用） | **Windows x64：2026-11-24 通過兩次**（冷安裝 13.5–55.7 s，隨下載速度變化；暖選型 57–77 ms、0 次網路）。Linux x64／macOS arm64／Linux arm64：**NOT RUN** |
 

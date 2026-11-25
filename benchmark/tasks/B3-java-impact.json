@@ -1,0 +1,6 @@
+{
+  "id": "B3-java-impact",
+  "project": "transmac-oms",
+  "cwd": "D:/02_zengjunlin/github/transmac-oms",
+  "prompt": "在 transmac-oms 專案中，分析方法 `listWithDetailsFromTemplate`（實作在 class `EditScheduleServiceImpl`）的呼叫者與可能受影響的模組。請明確區分「已確認」與「不確定」，並說明你如何排除同名的其他方法。不要修改任何檔案。"
+}

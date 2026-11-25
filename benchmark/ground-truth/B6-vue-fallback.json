@@ -1,0 +1,40 @@
+{
+  "id": "B6-vue-fallback",
+  "project": "transmac-oms-fe",
+  "established_by": "reviewer+git grep, 2026-11-25, HEAD f9fd1a63",
+  "evidence": "usage at 2236 and 3194; definition at 3248",
+  "required_elements": [
+    {
+      "kind": "file",
+      "value": "src/components/businessDrivingRecordQueryDialog/index.vue"
+    },
+    {
+      "kind": "line",
+      "value": 3248,
+      "hint": "definition"
+    },
+    {
+      "kind": "line",
+      "value": 2236,
+      "hint": "usage in watcher"
+    },
+    {
+      "kind": "line",
+      "value": 3194,
+      "hint": "usage"
+    },
+    {
+      "kind": "statement",
+      "value": "names the tools used and states the BaseMind Vue limitation or a working fallback"
+    }
+  ],
+  "unacceptable": [
+    "repeatedly retrying the same BaseMind tool",
+    "fabricated positions",
+    "missing the definition"
+  ],
+  "scoring": {
+    "pass_min": 4,
+    "partial_min": 3
+  }
+}

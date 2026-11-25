@@ -1,0 +1,40 @@
+{
+  "id": "B1-java-symbol",
+  "project": "transmac-oms",
+  "established_by": "reviewer+git grep, 2026-11-25, HEAD f6f2988d",
+  "evidence": "git grep -n getScheduleByDateAndStaffId; EditScheduleServiceImpl.java:676",
+  "required_elements": [
+    {
+      "kind": "file",
+      "value": "driverServApi/src/main/java/com/transmac/driverServ/service/driverSchedule/impl/EditScheduleServiceImpl.java"
+    },
+    {
+      "kind": "line",
+      "value": 676,
+      "slack": 2
+    },
+    {
+      "kind": "symbol",
+      "value": "EditScheduleServiceImpl"
+    },
+    {
+      "kind": "ref",
+      "value": "driverServApi/src/main/java/com/transmac/driverServ/api/driverSchedule/EditScheduleApi.java",
+      "hint": "line 393 calls editScheduleService.getScheduleByDateAndStaffId",
+      "optional": false
+    }
+  ],
+  "acceptable_alternatives": [
+    "line 676 plus signature line 677 is acceptable",
+    "the interface declaration EditScheduleService.java may be listed as an extra, not as the implementation"
+  ],
+  "unacceptable": [
+    "EditScheduleRealServiceImpl",
+    "mapper interfaces (EditScheduleMapper)",
+    "fabricated caller"
+  ],
+  "scoring": {
+    "pass_min": 4,
+    "partial_min": 3
+  }
+}

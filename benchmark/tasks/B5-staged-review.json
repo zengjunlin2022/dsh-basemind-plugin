@@ -1,0 +1,6 @@
+{
+  "id": "B5-staged-review",
+  "project": "bm-staged",
+  "cwd": "SETUP:bm-staged",
+  "prompt": "只審查 bm-staged 專案中**已 staged** 的變更（以 `git diff --cached` 為準），找出 Critical 或 Important 問題，提供 file:line、影響與最小修復建議。不要審查 unstaged 或 untracked 的變更，也不要修改任何檔案。"
+}

@@ -936,4 +936,63 @@ Review 的 Important 1、2 已修並新增 deterministic 測試；Important 3 �
 4. Finding 3 的文件敘述未以全新 cache 冷安裝實測。
 5. 未 commit、未 push；`main` 仍 `2a17e9b`；工作區修改範圍見 §11.16 (7) 加上本節的 README／CHANGELOG／報告。
 
+---
+### 11.19 2026-11-24 23:16–23:35 Phase B：重建＋3A 剩餘取證（P3-06／12／13／15／17／18）
 
+#### (1) 環境
+
+- `bm-bench-e`（新）：從 commit `5bec005` 的 tarball 安裝；`BASEMIND_DATA_HOME`／`BASEMIND_COMMS_DIR` 指到 `C:/Users/sanny/AppData/Local/Temp/bm-phase3e/`，與使用者預設 BaseMind 狀態完全隔離；web 實例 `127.0.0.1:52474`（測試後關閉）。
+- 三個 workspace：本 repo（128 files）、Vue `C:/01_aw_github/transmac-oms-fe`（2,101 files）、Java `D:/02_zengjunlin/github/transmac-oms`（7,692 files）。全部唯讀。
+- session：`5bc5c294`（repo）、`3d8ac6c0`（Vue）、`18597c46`（Java）。
+
+#### (2) P3-15 多 session 隔離 — PASS（Vue 部分）
+
+- 三個 session 的 `index_status` 分別回自己的 root：`\\?\D:\02_zengjunlin\github\dsh-basemind-plugin`、`\\?\C:\01_aw_github\transmac-oms-fe`、`\\?\D:\02_zengjunlin\github\transmac-oms`。
+- 交叉讀取（`code_grep` 同一 pattern）：repo session 搜 `preview-diff-core` → `{"hits":{}}`（0）；Vue session → **7 處匹配／6 個檔**（`passenger_notice_template/*`）。repo session 搜 `DiagnosisController` → 0。
+- 路由與隔離成立；三個 workspace 共用同一個 0.34.0 binary。
+
+#### (3) P3-12 R2 secondary relay — PASS
+
+- relay 建立時間：repo 7564（23:18:47）、另外兩個 23:18:53（Vue／Java）。
+- 殺掉 10216 後：repo 與 Vue 的 `index_status` 都成功且**沒有**新 relay；Java session 下一次呼叫觸發新 relay **58944**（23:21:09）並回成功結果。
+- 結論：終止 secondary relay 只影響該 workspace，下一次呼叫會重建。
+
+#### (4) P3-17 停用／重載 — PASS
+
+- `bm-bench-c` patch 加 `- id: dsh-basemind / disabled: true`：session 32 tools／**0** `mcp__basemind__`／system 6,334 B／無 bootstrap；測試前後 `basemind.exe` 數皆 4（**沒有** spawn relay）。
+- 移除 disable 後：54 tools／19 `mcp__basemind__`／system 10,350 B／bootstrap／cli；create1 1,389 ms（gate 生效）。
+
+#### (5) P3-13 R3 daemon unavailable — PASS
+
+- `basemind comms stop`（只針對隔離 namespace）被拒：`daemon_busy: refusing to stop while persistent clients or work are active (relays=1, http=0, work=0)`。
+- 直接結束隔離 daemon（PID 52128）後，下一次 `index_status` **1,567 ms** 內回完整 index（`file_count 64`）；relay 5320 自行重啟 daemon（新 PID 60080，23:30:16）。無 hang、沒有 120 s timeout；使用者的預設 daemon 不受影響。
+
+#### (6) P3-18 Vue／Java 邊界 — PARTIAL
+
+- Vue SFC：`code_outline src/components/Breadcrumb/index.vue` → `language: vue, total: 0, symbols: []`（0.34.0 不對 SFC 產出符號）。
+- `code_search {"query":"breadcrumb navigation","lane":"keyword"}` → top hit `src/views/login/DingTalkLoginCallback.vue`（相關性低）；`code_grep "<template>"` → 29 處（`total_is_partial: true`）。
+- Java：`bi-diagnosis` 多模組 repo（7,692 files）的首次 index build 在隔離 data home **超過 15 分鐘仍未完成**（23:18 起、23:33 停在 extract 5120/7692，daemon CPU 持續上升、WorkingSet 1.37 GB）；因此 Java 的 `code_*` 查詢無有效結果（`code_grep DiagnosisController` 回 0 並附 `building_index` notice）。**Java 邊界未取得可用證據**。
+
+#### (7) P3-06 prompt／usage 量測 — PASS
+
+- 同一 session：system **10,350 B**、skills catalog **6,076 B／18 entries（10 basemind）**、54 tools。
+- tool schema JSON：全部 54 個 **54,869 B**，其中 19 個 basemind **21,652 B**。
+- 4 個 model step 合計：input 13,856、output 204、cacheRead 105,856、total **119,916**。
+
+#### (8) Phase B-1 重建（commit `5bec005`）
+
+- tarball：`D:/_bm_phase3/commit5bec005/dsh-basemind-plugin-0.2.0-5bec005.tgz`（150,843 B）；`bm-bench-a`／`bm-bench-b` 已重裝。
+- `bm-bench-b` 冷啟（真實 web 實例）：create1 **1,514 ms**；兩個 session 第 1 輪都是 19 `mcp__basemind__`／system 10,350 B／bootstrap／catalog 18 entries／10 basemind skills（56 tools，含 codex 插件的 2 個）。
+- F1：手動殺掉 relay（PID 12432）後，下一次 `index_status` 成功，插件長出新 relay（PID 59604）。F2：bootstrap 句 `read/grep/glob and shell tools` 在。
+- 回歸：`npm test` **454 tests／444 pass／0 fail／10 skipped**（37.7 s），integration 已包含在內。
+
+#### (9) compat.yml 遠端 dispatch — BLOCKED
+
+- `POST /repos/zengjunlin2022/dsh-basemind-plugin/actions/workflows/compat.yml/dispatches` 回 **204**，但 `GET /actions/workflows` 與 `/actions/runs` 都是 **404**（`Not Found`）→ 目前的 `GH_TOKEN`（user-env）沒有 Actions 權限，無法查詢或觸發 workflow。
+- 需要具 `Actions: read/write` 的 token，或由使用者在 GitHub UI 手動 dispatch；在那之前 compat.yml 維持 **NOT RUN**。
+
+#### (10) 殘留
+
+- 新測試 profile：`bm-bench-e`（隔離 3A）、`bm-bench-f`（R3）；`bm-bench-c` 的 patch 留有 P3-17 的註解紀錄。
+- Java 索引在建置超過 15 分鐘後連同 bench-e 實例一起停止（`basemind.exe` 歸零），該項維持 PARTIAL，未取得 Java 查詢證據。
+- 本輪未 commit、未 push；working tree 有 `README.md`、`README.zh.md`、`test/integration.test.mjs` 與本報告的未提交修改。

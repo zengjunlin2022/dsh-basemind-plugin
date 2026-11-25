@@ -1,0 +1,6 @@
+{
+  "id": "B6-vue-fallback",
+  "project": "transmac-oms-fe",
+  "cwd": "C:/01_aw_github/transmac-oms-fe",
+  "prompt": "在 transmac-oms-fe 專案中，找出 `src/components/businessDrivingRecordQueryDialog/index.vue` 裡 `handleAppraisalRemindContextChange` 的所有使用位置與定義位置（檔案＋行號），並說明你使用了哪些工具。若某個工具沒有結果，說明原因並改用其他方式；不要修改任何檔案。"
+}

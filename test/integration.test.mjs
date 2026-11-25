@@ -134,10 +134,18 @@ const RETIRED_TOOLS = Object.freeze([
 const PROTOCOL_VERSION = '2025-06-18';
 
 /** Generous per-test budget: the first `basemind serve` may start/refresh the daemon. */
-const TEST_TIMEOUT_MS = 180_000;
+const TEST_TIMEOUT_MS = 360_000;
 
 /** How long a cold index build may take before the test fails instead of hanging. */
-const INDEX_BUILD_TIMEOUT_MS = 150_000;
+/**
+ * How long a cold index build may take before the test fails instead of hanging.
+ *
+ * A fresh `BASEMIND_DATA_HOME` builds its first index from scratch: 36 s when this
+ * suite runs alone, and more than 150 s while another real-BaseMind suite shares the
+ * machine (measured 2026-11-24). The wait polls `index_status`, so a generous ceiling
+ * costs nothing on the happy path and only bounds a genuinely stuck daemon.
+ */
+const INDEX_BUILD_TIMEOUT_MS = 300_000;
 
 /** Minimal durable workspace marker BaseMind accepts (what `basemind init` writes). */
 const WORKSPACE_MARKER = '"$schema" = "v1"\n';

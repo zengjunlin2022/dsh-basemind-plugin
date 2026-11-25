@@ -1,0 +1,6 @@
+{
+  "id": "B1-java-symbol",
+  "project": "transmac-oms",
+  "cwd": "D:/02_zengjunlin/github/transmac-oms",
+  "prompt": "在 transmac-oms 專案中，找出方法 `getScheduleByDateAndStaffId`（實作在 class `EditScheduleServiceImpl`）的定義：完整檔案路徑、定義起始行號、類別名稱；並列出 1–2 個直接呼叫者（檔案＋行號）。只回報你實際確認到的內容；無法確認的部分要標明不確定。不要修改任何檔案。"
+}

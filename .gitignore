@@ -5,3 +5,4 @@ pack.json
 .DS_Store
 Thumbs.db
 .superpowers/
+benchmark/results/

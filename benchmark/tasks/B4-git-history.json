@@ -1,0 +1,6 @@
+{
+  "id": "B4-git-history",
+  "project": "transmac-oms-fe",
+  "cwd": "C:/01_aw_github/transmac-oms-fe",
+  "prompt": "在 transmac-oms-fe 專案中，找出檔案 `src/components/businessDrivingRecordQueryDialog/index.vue` 裡符號 `handleAppraisalRemindContextChange` 最近 3 次相關變更：commit SHA、日期、摘要，以及能否推論變更原因。最後說明「符號歷史」與「檔案歷史」的差異（此檔約有多少次檔案層級變更）。不要修改任何檔案。"
+}

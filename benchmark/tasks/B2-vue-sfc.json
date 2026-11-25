@@ -1,0 +1,6 @@
+{
+  "id": "B2-vue-sfc",
+  "project": "transmac-oms-fe",
+  "cwd": "C:/01_aw_github/transmac-oms-fe",
+  "prompt": "分析 transmac-oms-fe 專案中的 `src/views/driverSchedule/arrangeSchedule.vue`（約 5,800 行、373 KB）：說明它的主要職責、列出 3 個核心 methods 或 computed、2 個主要依賴（import 或全域依賴），並說明 template 與 script 的關係。需要時引用行號。不要修改任何檔案。"
+}

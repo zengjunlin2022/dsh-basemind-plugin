@@ -1,0 +1,38 @@
+{
+  "id": "B4-git-history",
+  "project": "transmac-oms-fe",
+  "established_by": "reviewer+git log -S, 2026-11-25, HEAD f9fd1a63",
+  "evidence": "git log -S handleAppraisalRemindContextChange -- <file>",
+  "required_elements": [
+    {
+      "kind": "commit",
+      "value": "687978305",
+      "date": "2026-11-06",
+      "summary": "Revert feat(更紙): 接入鞏固期間轉線提醒總開關"
+    },
+    {
+      "kind": "commit",
+      "value": "a123f0f7a",
+      "date": "2026-11-06",
+      "summary": "feat(更紙): 接入鞏固期間轉線提醒總開關"
+    },
+    {
+      "kind": "commit",
+      "value": "d0a9fa373",
+      "date": "2026-10-13",
+      "summary": "feat(mds): 添加评核期间转线提醒检查功能"
+    },
+    {
+      "kind": "statement",
+      "value": "symbol history (3 commits) is narrower than file history (216 commits)"
+    }
+  ],
+  "unacceptable": [
+    "listing file-history commits as the symbol's commits",
+    "fabricated SHAs/dates"
+  ],
+  "scoring": {
+    "pass_min": 4,
+    "partial_min": 3
+  }
+}

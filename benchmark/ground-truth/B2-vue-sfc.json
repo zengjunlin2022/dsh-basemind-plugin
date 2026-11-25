@@ -1,0 +1,41 @@
+{
+  "id": "B2-vue-sfc",
+  "project": "transmac-oms-fe",
+  "established_by": "reviewer reading, 2026-11-25, HEAD f9fd1a63",
+  "evidence": "vxeTableCols:3204, pageKeys:3241, formRouteList:3312, imports 2406/2467",
+  "required_elements": [
+    {
+      "kind": "symbol",
+      "value": "vxeTableCols"
+    },
+    {
+      "kind": "symbol",
+      "value": "pageKeys"
+    },
+    {
+      "kind": "symbol",
+      "value": "formRouteList"
+    },
+    {
+      "kind": "dep",
+      "value": "@/api/driverSchedule/scheduleRoute"
+    },
+    {
+      "kind": "dep",
+      "value": "@/utils/index"
+    }
+  ],
+  "acceptable_alternatives": [
+    "checkListIsSameWithOrigin (methods:3702) may replace any one computed",
+    "websocketMixin or echarts may replace one dependency"
+  ],
+  "unacceptable": [
+    "fabricated methods/computed",
+    "attributing template work to script",
+    "copying only the header comment"
+  ],
+  "scoring": {
+    "pass_min": 4,
+    "partial_min": 3
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "B3-java-impact",
+  "project": "transmac-oms",
+  "established_by": "reviewer+git grep, 2026-11-25, HEAD f6f2988d",
+  "evidence": "EditScheduleServiceImpl.java:929 and :1583 call this.listWithDetailsFromTemplate",
+  "required_elements": [
+    {
+      "kind": "file",
+      "value": "EditScheduleServiceImpl.java"
+    },
+    {
+      "kind": "ref",
+      "value": "929",
+      "hint": "this.listWithDetailsFromTemplate(reqVO.getCompany(), reqVO.getTemplateName())"
+    },
+    {
+      "kind": "ref",
+      "value": "1583",
+      "hint": "this.listWithDetailsFromTemplate(reqVO.getCompany(), ScheduleConstants.CREATE_TEMPLATE_NAME)"
+    },
+    {
+      "kind": "module",
+      "value": "driverServApi"
+    }
+  ],
+  "acceptable_alternatives": [
+    "naming the two in-class call sites by method name without line numbers is PARTIAL, not PASS"
+  ],
+  "unacceptable": [
+    "EditScheduleRealServiceImpl#listWithDetailsFromTemplate as a caller of this method",
+    "method reference Foo::bar as a call site",
+    "mapper methods as callers"
+  ],
+  "scoring": {
+    "pass_min": 3,
+    "partial_min": 2
+  }
+}
