@@ -996,3 +996,15 @@ Review 的 Important 1、2 已修並新增 deterministic 測試；Important 3 �
 - 新測試 profile：`bm-bench-e`（隔離 3A）、`bm-bench-f`（R3）；`bm-bench-c` 的 patch 留有 P3-17 的註解紀錄。
 - Java 索引在建置超過 15 分鐘後連同 bench-e 實例一起停止（`basemind.exe` 歸零），該項維持 PARTIAL，未取得 Java 查詢證據。
 - 本輪未 commit、未 push；working tree 有 `README.md`、`README.zh.md`、`test/integration.test.mjs` 與本報告的未提交修改。
+
+---
+
+### 11.20 2026-11-25 3C Pilot／3D 完整 Benchmark（34 輪）
+
+- 12 輪 Pilot ＋ 22 輪完整（B2 的 GPT 組未跑），A/B × DeepSeek/GPT × 6 任務；**34 輪全部 PASS**，B 組沒有任何任務由 PASS 退為 FAIL。
+- Token：Pilot 3,161,720（超 3M 上限）、完整 8,581,507（8.7M 內）、合計 11,743,227（12M 內）；多輪超過單輪 400k（最高 B2 B-deepseek 1,459,487）。
+- DeepSeek 上 B 組 tokens 多 11.3%（3.46M vs 3.10M）；GPT 上多 70%（1.27M vs 0.75M）；工具呼叫數相近（129 vs 129／45 vs 54），B 組的 skill 載入只出現在 GPT（5 次）。
+- 評分器與 Ground Truth 修正：B5 行號（4／11／15）、B2 改為 whitelist 任選 3 symbols＋2 deps、defect 以 file＋line 判定；全部在 3D 評分前完成並重評。
+- 完整數據、偏差與限制：`docs/2026-11-25-basemind-benchmark-report.md`；harness 在 `benchmark/`。
+- 3E 回歸：`npm test` 454/444/0/10（29.2 s）、`npm run check`、`check:skills`、`check:pack`（52 files）全部通過。
+- 尚未完成：實機 Desktop 驗收（D3–D15，需使用者操作）；compat.yml 遠端仍因 token 無 Actions 權限而 NOT RUN。

@@ -1,7 +1,7 @@
 # dsh-basemind-plugin — Phase 3 會話交接（2026-11-24 22:37）
 
 - 用途：本會話上下文即將耗盡；新會話從此檔接手。
-- 角色：下一個 Agent 為 **Execution Agent**（先修 Review findings，再續 Phase 3）；最終仍由使用者 Review／commit。
+- 角色：下一個 Agent 為 **Execution Agent**（Review findings 已修、Phase 3A–3D 已完成；剩實機 Desktop 驗收與 compat.yml）。
 - 專案：`D:\02_zengjunlin\github\dsh-basemind-plugin`
 - 目前 HEAD：`2a17e9b`（`main`，已 push；`origin/main` 同步）
 - 產品版本：`0.2.0`（不 bump、不 publish、不 tag）
@@ -12,7 +12,7 @@
 
 ## 1. 一句話現況
 
-Phase 1／2 已完成；Phase 3 的 D1a／D1b、3B、Web API driver、3A 主要取證已完成；**冷啟動修復＋Review 的 Important 1／2 已修並驗證、Important 3 已文件化（見 §15 與報告 §11.17）**；**isolated integration 在併行負載下 3 次逾時，安靜重跑 8/8 pass（既有 timing 問題，非本 diff）**；尚未 commit。3C／3D／3E 尚未開始。
+Phase 1／2 已完成；Phase 3 的 D1a／D1b、3B、Web API driver、3A、3C Pilot 與 3D 完整 benchmark 已完成（見報告 §11.20 與 `docs/2026-11-25-basemind-benchmark-report.md`）；**冷啟動修復＋Review 的 Important 1／2 已修並驗證、Important 3 已文件化（見 §15 與報告 §11.17）**；**isolated integration 在併行負載下 3 次逾時，安靜重跑 8/8 pass（既有 timing 問題，非本 diff）**；尚未 commit。3C／3D／3E 尚未開始。
 
 ---
 
@@ -309,3 +309,16 @@ untracked：
 - 10 個檔案已 staged（見 §3），本檔與 review 檔的狀態見 §3；**無 local commit／push／merge**；`main` 仍 `2a17e9b`。
 - 未動 Desktop profile；兩個業務 repo 只讀；未新增 runtime dependency。
 - 測試 profile：`bm-bench-c` 現指向 `…-phaseA3.tgz`（本輪 final tree）；`bm-bench-a/b` 未動。
+
+---
+
+## 16. 2026-11-25 續跑：3C／3D 完成（停點）
+
+- **3C Pilot 12 輪完成**：B1／B3／B6 × A/B × DeepSeek/GPT，全部 PASS；12 輪 token 3,161,720。
+- **3D 完整 22 輪完成**：B1–B6 × A/B × 2 模型（B2 的 GPT 組因成本未跑），全部 PASS；22 輪 token 8,581,507；合計 11,743,227 ≤ 12M。
+- 偏差（已記錄在 benchmark 報告）：B2 GPT pair 未跑；多輪超過單輪 400k；Pilot 超 3M 上限；B2／B5 的 Ground Truth 在 3D 前修正。
+- Harness 與文件：`benchmark/`（tasks／ground-truth／run.mjs／score.mjs／setup-staged.mjs）、`docs/2026-11-25-basemind-benchmark-report.md`、README §15.1（en／zh）、CHANGELOG Unreleased。
+- 3E 回歸：`npm test` 454/444/0/10、`check`、`check:skills`、`check:pack` 全綠。
+- 仍未完成：**實機 Desktop 驗收（D3–D15）** 需要使用者退出 Desktop、換裝 `5bec005` 之後的 tarball、重啟並依清單操作；**compat.yml 遠端** 因目前 GH_TOKEN 沒有 Actions 權限（API 404）而 NOT RUN。
+- 環境註記：fresh `BASEMIND_DATA_HOME` 的 tree-sitter language pack 下載會停住；benchmark data home 已改為從使用者 data home 複製 grammar pack（設定步驟，不改產品）。
+- 沒有 local commit／push／merge 由 Agent 執行；本次變更由使用者手動 commit。

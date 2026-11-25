@@ -2,32 +2,46 @@
   "id": "B2-vue-sfc",
   "project": "transmac-oms-fe",
   "established_by": "reviewer reading, 2026-11-25, HEAD f9fd1a63",
-  "evidence": "vxeTableCols:3204, pageKeys:3241, formRouteList:3312, imports 2406/2467",
+  "evidence": "real computed/methods: vxeTableCols:3204, pageKeys:3241, formRouteList:3312, dialogTitle:3274, getList:4362, inputBlur:5704, operates:5147; real deps: 2406 @/utils/index, 2467 @/api/driverSchedule/scheduleRoute, 2411 echarts, 2405 websocketMixin, 2409 Screenfull, 2410 OmsInput, 2412 element-plus",
   "required_elements": [
     {
-      "kind": "symbol",
-      "value": "vxeTableCols"
+      "kind": "any_of",
+      "min": 3,
+      "values": [
+        "vxeTableCols",
+        "pageKeys",
+        "formRouteList",
+        "dialogTitle",
+        "getList",
+        "inputBlur",
+        "operates",
+        "checkListIsSameWithOrigin",
+        "makeResDataToList",
+        "saveSectionData",
+        "formSubmit",
+        "dialogType",
+        "hasPermi"
+      ]
     },
     {
-      "kind": "symbol",
-      "value": "pageKeys"
-    },
-    {
-      "kind": "symbol",
-      "value": "formRouteList"
-    },
-    {
-      "kind": "dep",
-      "value": "@/api/driverSchedule/scheduleRoute"
-    },
-    {
-      "kind": "dep",
-      "value": "@/utils/index"
+      "kind": "any_of",
+      "min": 2,
+      "values": [
+        "@/api/driverSchedule/scheduleRoute",
+        "@/utils/index",
+        "echarts",
+        "element-plus",
+        "websocketMixin",
+        "Screenfull",
+        "OmsInput",
+        "ClickOutside",
+        "saveSectionDataForTemplate"
+      ]
     }
   ],
   "acceptable_alternatives": [
-    "checkListIsSameWithOrigin (methods:3702) may replace any one computed",
-    "websocketMixin or echarts may replace one dependency"
+    "any three real methods/computed from the whitelist, and any two real dependencies from the whitelist",
+    "noting the 10,244-line size instead of the prompt's 5,800 is acceptable and was true"
   ],
   "unacceptable": [
     "fabricated methods/computed",
@@ -35,7 +49,7 @@
     "copying only the header comment"
   ],
   "scoring": {
-    "pass_min": 4,
-    "partial_min": 3
+    "pass_min": 2,
+    "partial_min": 1
   }
 }

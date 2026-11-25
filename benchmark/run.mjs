@@ -18,7 +18,7 @@ if (!opt.task || !opt.log || !opt.out) {
 }
 const taskFile = path.join('benchmark', 'tasks', opt.task + '.json')
 const task = JSON.parse(readFileSync(taskFile, 'utf8'))
-const cwd = opt.cwd ?? task.cwd
+const cwd = opt.cwd ?? (String(task.cwd).startsWith('SETUP:') ? path.join(os.tmpdir(), String(task.cwd).slice(6)) : task.cwd)
 const timeoutMs = Number(opt['timeout-ms'] ?? 1_800_000)
 const home = process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh')
 const projectDir = '--' + String(cwd).replace(/[\\/:]+/g, '-') + '--'
@@ -34,7 +34,7 @@ const nodesOf = (file) => {
     return text.split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
   } catch { return [] }
 }
-const textOf = (payload) => (Array.isArray(payload?.content) ? payload.content.map((p) => p?.text ?? '').join('') : '')
+const textOf = (payload) => (Array.isArray(payload?.content) ? payload.content.filter((p) => p?.type === 'text').map((p) => p?.text ?? '').join('') : (payload?.text ?? ''))
 
 const started = Date.now()
 const created = await api.createSession({ cwd })

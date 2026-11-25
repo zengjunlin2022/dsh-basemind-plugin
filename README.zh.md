@@ -258,6 +258,16 @@ DSH 對上游文字的適配只存在 `skills/.dsh-adapt.json`；用 `npm run sy
 | 外部 binary 契約 | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | **由插件外部**安裝、用系統 `tar`／`unzip` 解開的 BaseMind 的 MCP／CLI 契約（`compat.yml`）。結構上測不到 managed 安裝。 | `compat.yml`（Ubuntu x64、macOS arm64、Windows x64） | **NOT RUN**（無 GitHub Actions 存取權；兩個套件在 `npm test` 內已對本機真實 0.34.0 實跑過） |
 | Managed 安裝 | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | 插件**自己的**路徑：真下載官方 asset、驗官方 SHA256、解完整 Release Tree、寫 layout-2 記錄、真跑 `basemind --version`、用該 managed binary 跑真 MCP relay（tools／resources）與真 CLI（`managed-binary.yml`）。 | `managed-binary.yml`（Windows x64、Linux x64、macOS arm64；Linux arm64 只能透過 `include_linux_arm64` 輸入啟用） | **Windows x64：2026-11-24 通過兩次**（冷安裝 13.5–55.7 s，隨下載速度變化；暖選型 57–77 ms、0 次網路）。Linux x64／macOS arm64／Linux arm64：**NOT RUN** |
 
+### 15.1 Phase 3 效果 Benchmark（2026-11-25）
+
+另一個 A/B benchmark 量測的是「同樣的 MCP 工具之上，Bootstrap／Skills／CLI 多給了什麼」：A 組關閉這三個面向，B 組用預設值，其餘（commit、BaseMind 0.34.0、索引、模型、prompt、preset）完全相同。Pilot 12 ＋完整 22，共 34 輪，涵蓋兩個模型與六個任務：
+
+- **正確性：兩組相同** — 兩組每一輪都通過 rubric，沒有任何任務退化。
+- **成本：混合且樣本小** — DeepSeek 上 B 組多用 11.3% tokens（3.46M vs 3.10M，各 6 輪）；GPT 上多用 70%（1.27M vs 0.75M，各 5 輪）。
+- B2 的 GPT 組因成本未跑；多輪超過單輪 400k 上限；兩者都已記錄。
+
+結果與偏差：[docs/2026-11-25-basemind-benchmark-report.md](docs/2026-11-25-basemind-benchmark-report.md)。這是效果證據，不是發布 gate；上面的三條 gate 各自成立。
+
 Gate 契約細節：
 
 - `npm test` 不會下載 release：沒有 `BASEMIND_REQUIRE_MANAGED_INTEGRATION` 時，managed 測試以明確訊息 skip 並指出該變數。

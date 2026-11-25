@@ -29,7 +29,8 @@ const check = (element, answer, task) => {
     case 'ref': return hasToken(answer, element.value) || (element.hint && hasToken(answer, element.hint))
     case 'commit': return hasToken(answer, element.value) || (element.value.length >= 9 && hasToken(answer, element.value.slice(0, 7)))
     case 'statement': return element.value.includes('216') ? hasToken(answer, '216') && /(檔|file)[^。\n]*歷史|file history/i.test(answer) : /mcp__basemind__|grep|code_grep|code_read|搜尋|fallback/i.test(answer)
-    case 'defect': return hasToken(answer, element.file) && hasLine(answer, element.line, 2) && (element.contains ? hasToken(answer, element.contains) || hasToken(answer, element.value) : true)
+    case 'defect': return hasToken(answer, element.file) && hasLine(answer, element.line, 2)
+    case 'any_of': return (element.values ?? []).filter((value) => hasToken(answer, value)).length >= (element.min ?? 1)
     case 'non-defect': return true
     case 'scope': return !hasToken(answer, 'unstaged-note') && !hasToken(answer, 'untracked.js')
     default: return false

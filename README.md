@@ -258,6 +258,20 @@ Three separate gates. They are deliberately **not** interchangeable — passing 
 | External binary contract | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | The MCP/CLI contract of a BaseMind build installed **outside** the plugin and unpacked with the system `tar`/`unzip` (`compat.yml`). Structurally cannot detect a broken managed install. | `compat.yml` (Ubuntu x64, macOS arm64, Windows x64) | **NOT RUN** (no GitHub Actions access; the two suites did run locally against a real 0.34.0 inside `npm test`) |
 | Managed install | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | The plugin's **own** path: real download of the pinned asset, published-SHA256 verification, complete tree extraction, layout-2 install record, real `basemind --version`, real MCP relay tools/resources and real CLI verbs from that managed binary (`managed-binary.yml`). | `managed-binary.yml` (Windows x64, Linux x64, macOS arm64; Linux arm64 only via the `include_linux_arm64` input) | **Windows x64: passed twice on 2026-11-24** (cold install 13.5–55.7 s, network-dependent; warm selection 57–77 ms, 0 network). Linux x64 / macOS arm64 / Linux arm64: **NOT RUN** |
 
+### 15.1 Phase 3 effectiveness benchmark (2026-11-25)
+
+A separate A/B benchmark measured what the plugin's Bootstrap/Skills/CLI surfaces add on
+top of the same MCP tools: group A disables those three surfaces, group B keeps the
+defaults, everything else (commit, BaseMind 0.34.0, index, model, prompt, preset) is
+identical. 34 runs (Pilot 12 + full 22) across two models and six tasks:
+
+- **Correctness: identical** — every run in both groups passed its rubric; no task regressed.
+- **Cost: mixed and small-sample** — on DeepSeek group B used 11.3% more tokens (3.46M vs 3.10M, 6 runs each); on GPT 70% more (1.27M vs 0.75M, 5 runs each).
+- The B2 GPT pair was not run (cost) and several runs exceeded the 400k per-run budget; both are recorded.
+
+Results and deviations: [docs/2026-11-25-basemind-benchmark-report.md](docs/2026-11-25-basemind-benchmark-report.md).
+This is effectiveness evidence, not release gating; the gates above stand on their own.
+
 Details of the gate contract:
 
 - `npm test` never downloads the release: without `BASEMIND_REQUIRE_MANAGED_INTEGRATION` the managed suite skips with a message that names the variable.

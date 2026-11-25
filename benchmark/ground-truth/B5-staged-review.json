@@ -2,7 +2,7 @@
   "id": "B5-staged-review",
   "project": "bm-staged",
   "established_by": "reviewer-created synthetic repo (benchmark/setup-staged.mjs)",
-  "evidence": "git diff --cached shows three defects in src/plan.js: line 4 <= bound, line 9 user.profile dereference, line 13 setInterval without cleanup; the staged comment on line 1 is benign; src/unstaged-note.js and src/untracked.js are out of scope",
+  "evidence": "cat -n of the staged src/plan.js: line 4 <= bound, line 11 user.profile dereference, line 15 setInterval without cleanup; the staged comment on line 1 is benign; src/unstaged-note.js and src/untracked.js are out of scope",
   "required_elements": [
     {
       "kind": "defect",
@@ -15,20 +15,21 @@
       "kind": "defect",
       "value": "missing null/profile check",
       "file": "src/plan.js",
-      "line": 9,
+      "line": 11,
       "contains": "user.profile.name"
     },
     {
       "kind": "defect",
       "value": "resource leak",
       "file": "src/plan.js",
-      "line": 13,
+      "line": 15,
       "contains": "setInterval"
     }
   ],
   "acceptable_alternatives": [
     "reporting 2 of 3 defects with correct file:line is PARTIAL",
-    "the leaked-interval defect may be described as a missing clearInterval/return"
+    "the leaked-interval defect may be described as a missing clearInterval/return",
+    "line 4-5 span is acceptable for the off-by-one"
   ],
   "unacceptable": [
     "reporting the staged comment on line 1 as a defect",
