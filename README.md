@@ -11,7 +11,7 @@ New to BaseMind? Start with the [BaseMind introduction](https://basemind.ai/star
 
 ## 1. What it is
 
-This is a DSH bundle. It starts BaseMind's own MCP server (`basemind serve`) for the repository the session is working in, registers the tools BaseMind advertises, and keeps them pointed at that workspace as the session moves. A `cd` inside a session makes the next call use the new repository without restarting anything. It has no UI page and does not modify any agent preset.
+This is a DSH bundle. It starts BaseMind's own MCP server (`basemind serve`) for the repository the session is working in, registers the tools BaseMind advertises, and keeps them pointed at that workspace as the session moves. A `cd` inside a session makes the next call use the new repository without restarting anything. It does not modify any agent preset. On a host with a Web GUI it also offers an optional, token-free Dashboard page on the Plugins page (see §16).
 
 | | Manual `basemind` MCP row | This bundle |
 |---|---|---|
@@ -228,7 +228,7 @@ BaseMind status - dsh-basemind-plugin 0.2.1
     - set binaryPolicy: "minor" to accept 0.34.x only after you have verified it.
 ```
 
-It is not a settings page, and it does not add a card to the Settings or Plugins UI.
+It is not a settings page and it adds no card to Settings. The only Plugins-page surface this bundle contributes is the optional Dashboard row-configuration page described in §16.
 
 ## 11. Official skills
 
@@ -254,8 +254,9 @@ Three separate gates. They are deliberately **not** interchangeable — passing 
 
 | Gate | Command | What it proves | Configured in | Run for this change set |
 | --- | --- | --- | --- | --- |
-| Local/unit | `npm test` | Everything that does not need a real BaseMind as a subject. The two real suites run only when a compatible BaseMind is on `PATH` or in `BASEMIND_BIN`; otherwise they skip. | `ci.yml` | Windows x64, locally: 455 tests, 445 pass, 10 skipped (the gated managed suite) |
+| Local/unit | `npm test` | Everything that does not need a real BaseMind as a subject. The two real suites run only when a compatible BaseMind is on `PATH` or in `BASEMIND_BIN`; otherwise they skip. | `ci.yml` | Windows x64, locally: 522 tests, 502 pass, 20 skipped (the gated real-binary suites, including the new Dashboard gate) |
 | External binary contract | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | The MCP/CLI contract of a BaseMind build installed **outside** the plugin and unpacked with the system `tar`/`unzip` (`compat.yml`). Structurally cannot detect a broken managed install. | `compat.yml` (Ubuntu x64, macOS arm64, Windows x64) | **NOT RUN** in CI yet (the workflow is dispatchable; the two suites did run locally against a real 0.34.0 inside `npm test`) |
+| Dashboard (real BaseMind) | `BASEMIND_DASHBOARD_INTEGRATION=1 BASEMIND_DASHBOARD_DATA_HOME=<warm isolated home> node --test test/integration-dashboard.test.mjs` | The Dashboard's own read paths and scans against a real binary: unindexed Overview, explicit full scan, indexed Overview, incremental scan, doctor, statistics scopes and pre-spawn path refusal. | not in CI yet (needs a warm grammar cache) | **Windows x64 locally: 1 pass, 7.0 s** on 2026-11-25 |
 | Managed install | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | The plugin's **own** path: real download of the pinned asset, published-SHA256 verification, complete tree extraction, layout-2 install record, real `basemind --version`, real MCP relay tools/resources and real CLI verbs from that managed binary (`managed-binary.yml`). | `managed-binary.yml` (Windows x64, Linux x64, macOS arm64; Linux arm64 only via the `include_linux_arm64` input) | **Windows x64 locally: passed twice on 2026-11-24** (cold install 13.5–55.7 s, network-dependent; warm selection 57–77 ms, 0 network). **CI: all green on 2026-11-25** for Windows x64, Linux x64 and macOS arm64 (manual `Managed binary` dispatch on `72d4fde`, run [45538156378](https://github.com/zengjunlin2022/dsh-basemind-plugin/actions/runs/45538156378)). Linux arm64: **NOT RUN** (opt-in only) |
 
 ### 15.1 Phase 3 effectiveness benchmark (2026-11-25)
@@ -283,6 +284,20 @@ Details of the gate contract:
 The managed path supports exactly the targets in `lib/upstream.js`: `windows-x64`, `linux-x64`, `linux-arm64`, `darwin-arm64`. Upstream publishes no macOS x64 or Windows arm64 asset, so those are **not** supported by the managed path. Linux arm64 is not scheduled by default anywhere, because this repository cannot confirm the `ubuntu-24.04-arm` runner label; a maintainer opts in explicitly.
 
 DSH Desktop acceptance (D1–D15) is a separate manual checklist: [docs/2026-11-24-basemind-desktop-acceptance-checklist.md](docs/2026-11-24-basemind-desktop-acceptance-checklist.md). **D1–D15 are all verified as of 2026-11-25** on DSH `0.2.2-rc.5` (real desktop profile plus an isolated `DSH_HOME` for the managed-fallback items): [acceptance report](docs/2026-11-25-basemind-desktop-acceptance-report.md).
+
+## 16. Optional Dashboard page (web GUI)
+
+When the host composes a Web server, the bundle also registers a small, read-only-first Dashboard on the Plugins page: **Plugins → the BaseMind row → Configure**. It is a page of the plugin, not a Settings card and not a new sidebar entry. Without a Web server (headless CLI, an older host) nothing is registered and the rest of the plugin is unchanged.
+
+- **Projects.** The selector lists the directories in the DSH Workspace registry and passes a registry id; the Host never accepts an arbitrary path from the browser. Switching a project here never changes an Agent's working directory, and the first entry is selected because a Host-only plugin has no reliable "current session" resolver.
+- **Overview.** Index health (`ready`, `not-indexed`, …), indexed file count, blob count, index size, language distribution with share bars, most-imported files, oversized files and BaseMind's own notice. One read-only `basemind status --json` call, cached for 5 seconds.
+- **Scan.** Full scan or an incremental scan of repo-relative paths. A full scan always asks first and names the path plus the CPU/RAM/IO risk; the existing index is never deleted or cleared. Dashboard scans are serialised machine-wide, so a second one is refused while the first runs. The last ten finished scans are kept per project, in the plugin's own cache (`dashboardHistory: false` disables that file entirely). Closing the page stops the 3-second status polling but does not cancel a submitted scan.
+- **Diagnostics.** Plugin version, binary state and version, index state, relay count and every `basemind doctor --json` check. Strictly read-only: no repair, no reconnect, no download, no re-index.
+- **Statistics.** Cache components and machine-global BaseMind telemetry (tool calls, per-tool distribution, estimated tokens saved) for today / 1h / 24h / all, over an explicit window. Disk usage and telemetry are **machine-global**; RSS is the peak of the short-lived query process. Estimated tokens saved is BaseMind's heuristic against a grep+read baseline, not API billing.
+
+Hard properties of this surface: it adds **no Agent tools, skills, prompt section or MCP tool**, consumes **zero model tokens**, runs **no query, timer, relay or daemon while the page is closed**, and never creates an index or downloads a binary on a passive view. `dashboard: false` removes the routes; a host without a Web server simply never sees the page.
+
+Unavailable by upstream contract (rendered as "not available", never as 0): scan progress, percentage and cancel (BaseMind 0.34.0 has no such API), and a BaseMind-reported last-scan timestamp, so Overview shows only the last Dashboard-submitted scan.
 
 ---
 

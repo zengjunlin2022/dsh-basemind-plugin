@@ -20,7 +20,9 @@ import { Buffer } from 'node:buffer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createBinaryManager } from './lib/binary/manager.js'
+import pkg from './package.json' with { type: 'json' }
+
+import { createBinaryManager, resolveDshHome } from './lib/binary/manager.js'
 import { createCliTool } from './lib/cli-tool.js'
 import { resolveConfig } from './lib/config.js'
 import { resolveLaunch, scrubEnv } from './lib/executable.js'
@@ -33,6 +35,11 @@ import { publicToolName } from './lib/schema.js'
 import { createStdioClient } from './lib/stdio-client.js'
 import { createToolDefinition } from './lib/tool-bridge.js'
 import { createWorkspacePool } from './lib/workspace-pool.js'
+import { createScanHistory } from './lib/dashboard/history.js'
+import { createDashboardRoutes, registerDashboardRoutes } from './lib/dashboard/routes.js'
+import { createDashboardRunner } from './lib/dashboard/run.js'
+import { createDashboardService } from './lib/dashboard/service.js'
+import { createWorkspaceProvider } from './lib/dashboard/workspaces.js'
 
 export const name = 'dsh-basemind-plugin'
 
@@ -91,6 +98,9 @@ export function apply(ctx, config) {
     skillsRegistered: false,
     bootstrapRegistered: false,
     statusRegistered: false,
+    dashboardRegistered: false,
+    /** The Dashboard service, disposed before the relays on shutdown. */
+    dashboard: undefined,
     /** Last selection line already logged, so a replay does not spam the log. */
     selectionLogged: undefined,
   }
@@ -810,10 +820,73 @@ export function apply(ctx, config) {
     }
   }
 
+  /**
+   * Register the optional Dashboard route family.
+   *
+   * Registration is passive: it creates no service, runs no query and starts no
+   * timer until a browser asks for one. The Web server is optional (headless
+   * compositions have none), so it is read with `ctx.get` and its absence is a
+   * silent, documented degradation — the agent-facing surfaces are unaffected.
+   */
+  function registerDashboard() {
+    if (state.dashboardRegistered || settings.dashboard !== true) return
+    let webServer
+    try {
+      webServer = ctx.get?.('webServer')
+    } catch {
+      webServer = undefined
+    }
+    if (webServer === undefined || webServer === null || typeof webServer.register !== 'function') {
+      logger?.debug?.('[dsh-basemind-plugin] ctx.webServer is unavailable; the Dashboard is not registered')
+      return
+    }
+    /** @type {any} */
+    let service
+    try {
+      const history = createScanHistory({
+        root: path.join(resolveDshHome(), 'cache', 'dsh-basemind-plugin', 'dashboard'),
+        enabled: settings.dashboardHistory === true,
+        logger,
+      })
+      service = createDashboardService({
+        workspaces: createWorkspaceProvider({ ctx, logger }),
+        history,
+        runner: createDashboardRunner({ ctx, logger }),
+        selection: () => state.selection,
+        plugin: { version: pkg.version, serverName },
+        relay: () => ({ relays: pool.size, workspaces: pool.roots }),
+        logger,
+      })
+      const disposers = registerDashboardRoutes(webServer, createDashboardRoutes({ service, logger }))
+      state.dashboard = service
+      state.dashboardRegistered = true
+      state.disposers.push(() => {
+        for (const dispose of disposers) dispose()
+      })
+    } catch (error) {
+      // A failed registration must not leave a half-registered route family or an
+      // undisposed service behind; registerDashboardRoutes already rolled back.
+      state.dashboard = undefined
+      state.dashboardRegistered = false
+      if (service !== undefined) void service.dispose()
+      logger?.warn?.(`[dsh-basemind-plugin] the Dashboard could not be registered: ${message(error)}`)
+    }
+  }
+
   /** Release everything this plugin registered and every relay it spawned. */
   async function shutdown() {
     state.disposed = true
     initController.abort()
+    // Cancel Dashboard-owned CLI work first: it is this plugin's own child, and
+    // the shared daemon it forwards to is never terminated here.
+    if (state.dashboard !== undefined) {
+      try {
+        await state.dashboard.dispose()
+      } catch (error) {
+        logger?.warn?.(`[dsh-basemind-plugin] disposing the Dashboard threw: ${message(error)}`)
+      }
+      state.dashboard = undefined
+    }
     // Stop a managed download first: relays are cheap to terminate, but a
     // half-written asset would linger in the cache until the next sweep.
     try {
@@ -869,6 +942,15 @@ export function apply(ctx, config) {
       return adoptAgentRoot(agent, payload?.signal)
     })
     registerStatusCommand()
+    registerDashboard()
+    // A composition may mount the Web server after this row. Cordis has no generic
+    // 'ready' event; `ctx.inject` is the host's own way to wait for an optional
+    // service, so it re-runs the (guarded) registration when webServer appears.
+    try {
+      if (typeof ctx.inject === 'function') ctx.inject(['webServer'], () => { registerDashboard() })
+    } catch (error) {
+      logger?.debug?.(`[dsh-basemind-plugin] webServer injection is unavailable: ${message(error)}`)
+    }
     void startPrimary()
     return async () => {
       try {

@@ -22,6 +22,16 @@ const required = [
   'lib/upstream.js',
   'lib/binary/manager.js',
   'lib/skills/provider.js',
+  // The optional Dashboard: its Host route family and its browser half. The
+  // browser half is what the dsh.client declaration in package.json names, so a
+  // tarball without it would install a plugin whose Dashboard never appears.
+  'lib/dashboard/client.js',
+  'lib/dashboard/contracts.js',
+  'lib/dashboard/history.js',
+  'lib/dashboard/routes.js',
+  'lib/dashboard/run.js',
+  'lib/dashboard/service.js',
+  'lib/dashboard/workspaces.js',
   'skills/UPSTREAM.json',
   'skills/LICENSE-basemind.txt',
   'skills/.dsh-adapt.json',

@@ -11,7 +11,7 @@ DeepSeek Harness 的工作區感知 BaseMind 橋接插件。安裝這個 bundle 
 
 ## 1. 這是什麼
 
-這是一個 DSH bundle。它為工作階段所在的儲存庫啟動 BaseMind 自己的 MCP 伺服器（`basemind serve`），註冊 BaseMind 宣告的工具，並在工作階段移動時讓工具跟著指向正確的工作區。在工作階段內 `cd` 之後，下一次呼叫就會使用新的儲存庫，不需要重啟任何東西。它沒有 UI 頁面，也不會修改任何 agent preset。
+這是一個 DSH bundle。它為工作階段所在的儲存庫啟動 BaseMind 自己的 MCP 伺服器（`basemind serve`），註冊 BaseMind 宣告的工具，並在工作階段移動時讓工具跟著指向正確的工作區。在工作階段內 `cd` 之後，下一次呼叫就會使用新的儲存庫，不需要重啟任何東西。它不會修改任何 agent preset；若宿主有 Web GUI，Plugins 頁另有選用的、零 token 的 Dashboard 頁面（見 §16）。
 
 | | 手動設定 `basemind` MCP 列 | 這個 bundle |
 |---|---|---|
@@ -228,7 +228,7 @@ BaseMind status - dsh-basemind-plugin 0.2.1
     - set binaryPolicy: "minor" to accept 0.34.x only after you have verified it.
 ```
 
-它不是設定頁，也不會在 Settings 或 Plugins 介面新增狀態卡片。
+它不是設定頁，也不會在 Settings 新增卡片。本 bundle 在 Plugins 介面唯一新增的表面，是 §16 所述的選用 Dashboard 列設定頁。
 
 ## 11. 官方 Skills
 
@@ -254,7 +254,8 @@ DSH 對上游文字的適配只存在 `skills/.dsh-adapt.json`；用 `npm run sy
 
 | Gate | 命令 | 證明什麼 | 設定於 | 本次變更實際執行 |
 | --- | --- | --- | --- | --- |
-| 本機／單元 | `npm test` | 所有不需要真實 BaseMind 當受測對象的測試。兩個真實整合檔只有在 `PATH` 或 `BASEMIND_BIN` 找到相容 BaseMind 時才會真的跑，否則 skip。 | `ci.yml` | Windows x64（本機）：455 tests、445 pass、10 skipped（被 gate 的 managed 套件） |
+| 本機／單元 | `npm test` | 所有不需要真實 BaseMind 當受測對象的測試。真實整合檔只有在 `PATH` 或 `BASEMIND_BIN` 找到相容 BaseMind 時才會真的跑，否則 skip。 | `ci.yml` | Windows x64（本機）：522 tests、502 pass、20 skipped（被 gate 的真實 binary 套件，含新的 Dashboard gate） |
+| Dashboard（真實 BaseMind） | `BASEMIND_DASHBOARD_INTEGRATION=1 BASEMIND_DASHBOARD_DATA_HOME=<暖機的隔離 home> node --test test/integration-dashboard.test.mjs` | Dashboard 自己的讀取路徑與掃描：未索引的 Overview、明確全量掃描、索引後的 Overview、增量掃描、doctor、統計範圍，以及呼叫前就拒絕越界路徑。 | 尚未進 CI（需要暖機的 grammar 快取） | **Windows x64 本機：2026-11-25 通過 1 次，7.0 s** |
 | 外部 binary 契約 | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | **由插件外部**安裝、用系統 `tar`／`unzip` 解開的 BaseMind 的 MCP／CLI 契約（`compat.yml`）。結構上測不到 managed 安裝。 | `compat.yml`（Ubuntu x64、macOS arm64、Windows x64） | CI 中**尚未執行**（workflow 可用 dispatch 觸發；兩個套件在 `npm test` 內已對本機真實 0.34.0 實跑過） |
 | Managed 安裝 | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | 插件**自己的**路徑：真下載官方 asset、驗官方 SHA256、解完整 Release Tree、寫 layout-2 記錄、真跑 `basemind --version`、用該 managed binary 跑真 MCP relay（tools／resources）與真 CLI（`managed-binary.yml`）。 | `managed-binary.yml`（Windows x64、Linux x64、macOS arm64；Linux arm64 只能透過 `include_linux_arm64` 輸入啟用） | **Windows x64 本機：2026-11-24 通過兩次**（冷安裝 13.5–55.7 s，隨下載速度變化；暖選型 57–77 ms、0 次網路）。**CI：2026-11-25 全綠**——Windows x64、Linux x64、macOS arm64（`Managed binary` 手動 dispatch，commit `72d4fde`，run [45538156378](https://github.com/zengjunlin2022/dsh-basemind-plugin/actions/runs/45538156378)）。Linux arm64：**NOT RUN**（僅 opt-in） |
 
@@ -280,6 +281,19 @@ managed 路徑只支援 `lib/upstream.js` 列出的 target：`windows-x64`、`li
 
 DSH Desktop 驗收（D1–D15）是另一份人工清單：[docs/2026-11-24-basemind-desktop-acceptance-checklist.md](docs/2026-11-24-basemind-desktop-acceptance-checklist.md)。**D1–D15 已於 2026-11-25 全部驗證**（DSH `0.2.2-rc.5`，含真實 desktop profile，以及 managed fallback 所需的獨立 `DSH_HOME`）：[驗收報告](docs/2026-11-25-basemind-desktop-acceptance-report.md)。
 
+## 16. 選用 Dashboard 頁面（Web GUI）
+
+當宿主有組合 Web server 時，本 bundle 會在 Plugins 頁多出一個小型頁面：**Plugins → BaseMind 該列 → Configure**。它是插件自己的頁面，不是 Settings 卡片，也不新增側邊欄入口。沒有 Web server 的環境（headless CLI、較舊宿主）完全不註冊，其餘功能不變。
+
+- **專案**：下拉清單來自 DSH Workspace Registry，傳給宿主的是 registry id；宿主不接受瀏覽器傳來的任意路徑。在此切換專案不會改動任何 Agent 的工作目錄；首個項目會被選中，因為 Host-only 插件沒有可靠的「目前工作階段」解析方式。
+- **總覽（Overview）**：索引健康（`ready`、`not-indexed` 等）、已索引文件數、blob 數、索引大小、語言分佈與佔比、最多被引用檔案、超長文件，以及 BaseMind 自己的 notice。一次唯讀 `basemind status --json`，快取 5 秒。
+- **掃描（Scan）**：全量掃描，或針對 repo 相對路徑的增量掃描。全量掃描一定先確認，並標明路徑與 CPU／RAM／IO 影響；既有的索引不會被刪除或清除。Dashboard 發起的掃描在整台機器上串行，同一時間只允許一個。每個專案保留最近 10 次完成的摘要，存在插件自己的快取（`dashboardHistory: false` 可完全停用該檔案）。關閉頁面會停止 3 秒狀態輪詢，但**不會**取消已提交的掃描。
+- **診斷（Diagnostics）**：插件版本、binary 狀態與版本、索引狀態、relay 數量，以及 `basemind doctor --json` 的每一項檢查。嚴格唯讀：不修復、不重連、不下載、不重建索引。
+- **統計（Statistics）**：快取組成與 BaseMind 的機器全域 telemetry（工具呼叫數、各工具分佈、預估節省 tokens），時間範圍為 today／1h／24h／all，且需明確選擇。磁碟用量與 telemetry 都是**整台機器**的數字；RSS 是該次查詢程序的峰值。Estimated Tokens Saved 是 BaseMind 對照 grep＋讀檔基線的啟發式估算，不是 API 計費。
+
+硬性保證：這個介面**不新增任何 Agent tool、skill、prompt section 或 MCP tool**，**不消耗模型 token**，頁面關閉時**不執行查詢、不建立 timer／relay／daemon**，被動查看也**不會建立索引或下載 binary**。`dashboard: false` 會移除路由；沒有 Web server 的宿主根本看不到這個頁面。
+
+上游契約上無法提供（顯示為「暫不可用」，絕不顯示 0）：掃描進度、百分比與取消（BaseMind 0.34.0 沒有這個 API），以及 BaseMind 回報的最後掃描時間；因此 Overview 只顯示「最近一次由 Dashboard 提交的掃描」。
 ---
 
 MIT © 2026 Ken。見 [LICENSE](LICENSE)。

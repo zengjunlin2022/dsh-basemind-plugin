@@ -4,6 +4,26 @@ All notable changes to `dsh-basemind-plugin` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **An optional, token-free BaseMind Dashboard on the Plugins page.** On a host that composes a Web server, the BaseMind row gains a **Configure** control that opens a full page: **Overview** (index health, file/blob counts, index size, language shares, most-imported, BaseMind's own notice), **Scan** (confirm-first full scan, incremental scan of repo-relative paths, per-project history of the last ten scans, real state and elapsed time), **Diagnostics** (plugin/binary/index/relay facts plus every `basemind doctor` check) and **Statistics** (cache components and machine-global telemetry with labelled scopes). The browser half is a hand-written DSH module-loader bundle (`lib/dashboard/client.js`), so the package stays dependency-free and build-free.
+- **A narrow Host route family** `/api/dsh-basemind-dashboard/*` behind a loopback plus same-origin fence: five exact routes for six operations over registry workspace ids, no arbitrary verb, cwd, environment or path. Reads are serialised Host-wide (one BaseMind child at a time, bounded queue, identical-request coalescing) and cached for 5 seconds; scans are explicit, machine-wide serialised, and unaffected by a client disconnect.
+- **`lib/dashboard/`**: `contracts.js` (JSON normalisers that keep unknown values `null`, never `0`), `run.js` (argv-only spawn through `ctx.subprocess.spawn`), `workspaces.js` (`ctx.workspaceRegistry`), `history.js` (bounded atomic JSON in the plugin cache), `service.js`, `routes.js`, `client.js`.
+- **Two settings**: `dashboard` (default `true`, passive route registration only) and `dashboardHistory` (default `true`; the only Dashboard file written is its own bounded scan history under `$DSH_HOME/cache/dsh-basemind-plugin/dashboard/`). Both are declared in `cordis.patch.yml`.
+- **A real-base-binary Dashboard gate**: `test/integration-dashboard.test.mjs` (opt in with `BASEMIND_DASHBOARD_INTEGRATION=1` and a warm `BASEMIND_DASHBOARD_DATA_HOME`) plus 65 unit tests over the contracts, history, service, routes, workspace provider and client bundle. `scripts/check-pack.mjs` now requires the seven Dashboard modules in the tarball.
+
+### Fixed
+
+- **Two defects the first review pass missed, found by an independent review and fixed with regression tests.** GET and POST `/scan` registered two exact routes with the same path; the real Web server keys exact routes by path and threw, which left five routes registered, made POST unreachable (405) and skipped the service disposal. The family is now one method-dispatching `/scan` route plus all-or-nothing registration with rollback. Separately, the four tab views were invoked as plain functions, so opening the Scan tab added ScanView's hooks to the page's hook chain and threw React's hook-order error; every view is now a real component element. Also fixed: incremental scope entries whose normalised form starts with `-` (including `./--x`) were passed to BaseMind as flags, the webServer retry used a non-existent Cordis event, and seven smaller findings (scope cap, dispose abort merging, invalidation epoch, non-overlapping polling, null-safe labels, diagnostics health fallback, config tests). Evidence: `docs/2026-11-25-basemind-dashboard-review-fix-report.md`.
+
+### Notes
+
+- BaseMind 0.34.0 exposes no scan progress, percentage or cancel API, and no BaseMind-reported last-scan timestamp. The page says so and shows only real state, elapsed time and the last Dashboard-submitted scan; it never simulates progress or fills unknown values with 0.
+- Disk usage, telemetry and process RSS are machine-global (RSS is the query process's own peak), and they are labelled that way. `Estimated Tokens Saved` stays BaseMind's heuristic against a grep+read baseline.
+- The Dashboard's real Desktop UI acceptance (packaged install, theme and locale switching, disable/uninstall) is **NOT RUN** in this change set; the structural contract is covered by `test/dashboard-client.test.mjs`. Steps are in `docs/2026-11-25-basemind-dashboard-execution-report.md` §4.3.
+- No Agent tool, skill, prompt section, MCP tool, timer, relay or daemon was added. Nothing runs while the page is closed, and a passive view never builds an index or downloads a binary.
 ## [0.2.1] - 2026-11-25
 
 ### Fixed

@@ -30,6 +30,7 @@
     ".": "./index.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
+    "./client": "./lib/dashboard/client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -49,6 +50,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ],
+      "platform": "web"
     }
   },
   "engines": {

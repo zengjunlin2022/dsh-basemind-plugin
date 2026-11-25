@@ -32,6 +32,24 @@ test('missing, null and array configs fall back to defaults without throwing', (
   }
 })
 
+test('dashboard settings default to on and accept booleans, strings and invalid values', () => {
+  assert.equal(DEFAULTS.dashboard, true)
+  assert.equal(DEFAULTS.dashboardHistory, true)
+  const defaults = resolveConfig({})
+  assert.equal(defaults.dashboard, true)
+  assert.equal(defaults.dashboardHistory, true)
+  assert.equal(resolveConfig({ dashboard: false }).dashboard, false)
+  assert.equal(resolveConfig({ dashboardHistory: false }).dashboardHistory, false)
+  assert.equal(resolveConfig({ dashboard: 'false' }).dashboard, false)
+  assert.equal(resolveConfig({ dashboardHistory: 'false' }).dashboardHistory, false)
+
+  const { warnings, logger } = recorder()
+  const invalid = resolveConfig({ dashboard: 'nonsense', dashboardHistory: 7 }, { logger })
+  assert.equal(invalid.dashboard, true)
+  assert.equal(invalid.dashboardHistory, true)
+  assert.equal(warnings.length, 2, 'each invalid setting warns once')
+})
+
 test('the resolved settings object is frozen', () => {
   const settings = resolveConfig({})
   assert.equal(Object.isFrozen(settings), true)

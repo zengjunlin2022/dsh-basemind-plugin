@@ -6,3 +6,11 @@
         # Explicit and auditable: the plugin may write its own managed cache and
         # download the pinned BaseMind release when no local binary is compatible.
         binaryDownload: true
+        # Optional Host-only Dashboard routes for the DSH Web GUI. Registration is
+        # passive (no query, timer or relay until a browser asks), and the routes
+        # exist only while a web server is composed.
+        dashboard: true
+        # The only Dashboard file this plugin writes is its own bounded scan
+        # history under $DSH_HOME/cache/dsh-basemind-plugin/ (never the project,
+        # never BaseMind's index). false disables both reading and writing it.
+        dashboardHistory: true
