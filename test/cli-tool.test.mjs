@@ -64,7 +64,7 @@ function makeHandle(options) {
 /** A ctx exposing only what the CLI tool touches. */
 function fakeContext(options) {
   const opts = options ?? {}
-  const state = { ensured: [], specs: [] }
+  const state = { ensured: [], specs: [], spawnReceiver: undefined }
   const ctx = {
     get(key) {
       if (key === 'agents' && opts.initiator !== null) {
@@ -82,6 +82,7 @@ function fakeContext(options) {
     },
     subprocess: {
       spawn(spec) {
+        state.spawnReceiver = this
         state.specs.push(spec)
         if (opts.onSpawn !== undefined) opts.onSpawn(spec)
         return opts.handle === undefined ? makeHandle() : opts.handle
@@ -384,4 +385,14 @@ test('a missing binary or a missing spawn service is reported, never thrown', as
   const asString = setup({ binary: 'D:/bin/basemind.exe' })
   await asString.definition.execute({ args: ['status'] }, {})
   assert.equal(asString.state.specs[0].argv[0], 'D:/bin/basemind.exe')
+})
+
+test('spawn keeps the subprocess provider as its receiver', async () => {
+  // Regression for the Desktop D8 failure: DSH's provider is a class method that
+  // reads `this` before launching, so a detached call throws
+  // "Cannot read properties of undefined (reading 'selectContainmentMode')".
+  const { definition, ctx, state } = setup({ binary: 'D:/bin/basemind.exe' })
+  const result = await definition.execute({ args: ['status'] }, {})
+  assert.equal(result.isError, false)
+  assert.equal(state.spawnReceiver, ctx.subprocess, 'spawn keeps the provider as its receiver')
 })

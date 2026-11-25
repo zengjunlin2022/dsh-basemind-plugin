@@ -4,7 +4,7 @@
 - 版本狀態：`package.json` **0.2.0**（目前為開發版本，尚未正式發佈）；本清單的打包與安裝步驟一律使用 0.2.0 tarball，**不 bump 版本、不發布**。目標發布版本與正式發佈版本均為 0.2.0。
 - 角色：Execution（Phase 2 Task C 產出）
 - 依據：[Stability & Feature Parity Plan](./2026-11-24-basemind-stability-feature-parity-plan.md) §12、[Phase 1 Execution Report](./2026-11-24-basemind-stability-phase1-execution-report.md)
-- 本檔性質：**可執行的人工驗收清單**。本次自動化只完成 D1 與 D2 的「profile 組裝」部分（見 §2），D2 的 GUI 部分與 D3–D15 **尚未執行**，必須由人在獨立測試環境完成後把結果填回 §5 表格。
+- 本檔性質：**可執行的人工驗收清單**。本次自動化只完成 D1 與 D2 的「profile 組裝」部分（見 §2）；**2026-11-25 已在生產 desktop profile 實機執行 D3–D14 並把結果填回 §5**（完整證據見 [實機驗收報告](./2026-11-25-basemind-desktop-acceptance-report.md)），仍待人工的是 D3 的 `/basemind-status` 原文、D4／D5（隔離實例）與 D15（GUI 停用／啟用／卸載）。
 - 判定用語：**PASS**／**FAIL**／**NOT RUN**（未執行不得寫成 PASS）。
 
 ---
@@ -199,19 +199,22 @@ $dsh = "C:\Users\sanny\AppData\Local\Programs\DeepSeek Harness\resources\runtime
 | --- | --- | --- | --- | --- |
 | **D1** | 插件打包及安裝 | `npm pack` 產生 tarball；含 runtime JS、`cordis.patch.yml`、`locale/*`、`icon.svg`、10 個 skills；不含 cache／test／暫存檔；DSH 可安裝並啟用 | tarball 142,425 B／52 檔／10 skills；`check:pack` 52 files ok；獨立 profile 安裝成功（§2） | **PASS（本機實測）** |
 | **D2** | Standard Preset | 不改 preset、不加 MCP row、不改 YAML，Agent 即可發現插件工具 | profile 由 shipped web 模板建立、使用者 patch 為 `[]`、`dsh-basemind` row 自動插入且未 disabled（§2.2）；**GUI 內工具發現未驗** | **PASS（組裝層）／GUI NOT RUN** |
-| **D3** | Local First | 本機相容 0.34.0 被使用；無下載；`/basemind-status` 顯示版本與來源 `path`（或 `env`／`command`） | 操作步驟見 §3.4 | NOT RUN |
-| **D4** | Managed fallback | 隔離環境下無本機／版本不相容時自動選用 managed；不影響用戶全局安裝 | 操作步驟見 §3.2 的 D4 前提 | NOT RUN |
-| **D5** | Managed cache | 重啟 profile 或重建插件實例後重用 cache，不重下載、不重建大型副本 | 操作步驟見 §3.4 | NOT RUN |
-| **D6** | MCP Tools | 15 個 verb tools 全部可見（comms build 另有 3 個 agent tools）且**實際可調用**，非只有名稱 | | NOT RUN |
-| **D7** | MCP Resources | `list_mcp_resources`、`read_mcp_resource`、resource templates 可用；工作區路由正確 | | NOT RUN |
-| **D8** | CLI Adapter | `mcp__basemind__cli` 用已選相容 binary、當前工作區，回傳真實分析結果 | | NOT RUN |
-| **D9** | Skills Registry | 10 個官方 skills 出現；metadata 符合 DSH 契約；不重複註冊；用戶／專案同名優先 | | NOT RUN |
-| **D10** | Skills 正文 | 真實 Agent 能載入 skill 正文（不是只看得到 catalog） | | NOT RUN |
-| **D11** | 多 Session 隔離 | Session A 不讀 Repo B、B 不讀 A；順序不影響路由；binary 共用；索引不混用 | | NOT RUN |
-| **D12** | 工作區切換 | `cd` 後下一次工具調用使用新目錄（非建立時目錄） | | NOT RUN |
-| **D13** | Subagent 路由 | 主 Agent 與 subagent 各自工作區；MCP／CLI／Resources 都走對 | | NOT RUN |
-| **D14** | 同一 Repo 不同 Worktree | 讀到正確 worktree 內容；同 group 的 index／memory／document store 共享符合上游語義 | | NOT RUN |
-| **D15** | 插件生命周期 | 停用／重啟用／重載／卸載後不殘留 tools、CLI、skills、bootstrap、resource provider；自身 relay 關閉；不誤停用戶 daemon；cache 保留 | | NOT RUN |
+| **D3** | Local First | 本機相容 0.34.0 被使用；無下載；`/basemind-status` 顯示版本與來源 `path`（或 `env`／`command`） | 5 個 relay 全指向全域 `…\Programs\basemind\basemind.EXE`；`managed-binaries/` 為空（0 次下載）；`/basemind-status` 原文待人工 | **PASS（間接證據）** |
+| **D4** | Managed fallback | 隔離環境下無本機／版本不相容時自動選用 managed；不影響用戶全局安裝 | 需改 PATH／獨立 `DSH_HOME` 的隔離實例，本輪未執行 | NOT RUN |
+| **D5** | Managed cache | 重啟 profile 或重建插件實例後重用 cache，不重下載、不重建大型副本 | 依賴 D4，本輪未執行 | NOT RUN |
+| **D6** | MCP Tools | 15 個 verb tools 全部可見（comms build 另有 3 個 agent tools）且**實際可調用**，非只有名稱 | 19 個 `mcp__basemind__*` 可見（15 verbs＋cli＋3 agent tools）；14 個實調成功，`cli` 見 D8 | **PASS（CLI 除外）** |
+| **D7** | MCP Resources | `list_mcp_resources`、`read_mcp_resource`、resource templates 可用；工作區路由正確 | `basemind://status` 讀取成功；templates 2 個；展開 `basemind://outline/src/summer-a.js` 成功 | **PASS** |
+| **D8** | CLI Adapter | `mcp__basemind__cli` 用已選相容 binary、當前工作區，回傳真實分析結果 | 任何 verb 皆回 `could not start the BaseMind CLI: …selectContainmentMode`；根因 `lib/cli-tool.js:463` 未綁定 provider receiver；修復＋回歸測試見報告 §4.5 | **FAIL（5bec005 建置；已修，待實機重驗）** |
+| **D9** | Skills Registry | 10 個官方 skills 出現；metadata 符合 DSH 契約；不重複註冊；用戶／專案同名優先 | catalog 與磁碟皆 10 個、無重複、base dir 指向插件；同名優先級未驗 | **PASS** |
+| **D10** | Skills 正文 | 真實 Agent 能載入 skill 正文（不是只看得到 catalog） | `basemind-doctor` 正文完整載入；其第一步 `cli doctor` 被 D8 阻擋 | **PARTIAL** |
+| **D11** | 多 Session 隔離 | Session A 不讀 Repo B、B 不讀 A；順序不影響路由；binary 共用；索引不混用 | repo-a 主會話找不到 `summerB`；repo-b subagent 找不到 `summerA`；每 workspace 一個 relay、同一個全域 binary | **PASS（兩個並行 agent 會話）** |
+| **D12** | 工作區切換 | `cd` 後下一次工具調用使用新目錄（非建立時目錄） | plugin repo→repo-a→repo-c→worktree，每次 `index_status.root` 與可查符號同步改變 | **PASS** |
+| **D13** | Subagent 路由 | 主 Agent 與 subagent 各自工作區；MCP／CLI／Resources 都走對 | subagent `root=…\repo-b`（`776b2ea`）、`summerB` 命中、`summerA` 空；CLI 步驟同樣撞 D8 | **PASS（MCP 路由）** |
+| **D14** | 同一 Repo 不同 Worktree | 讀到正確 worktree 內容；同 group 的 index／memory／document store 共享符合上游語義 | worktree 讀到 `summerAWorktree`、`root=…\repo-a-wt`；worktree 取得獨立 cache_dir，group 共享語義未驗 | **PASS（內容）／部分未驗** |
+| **D15** | 插件生命周期 | 停用／重啟用／重載／卸載後不殘留 tools、CLI、skills、bootstrap、resource provider；自身 relay 關閉；不誤停用戶 daemon；cache 保留 | 需 GUI 操作；基線已記錄（5 relay＋1 comms daemon、cache 目錄存在） | NOT RUN |
+
+> **PARTIAL** 是 2026-11-25 實機驗收新引入的判定，表示「部分條件成立、部分被阻擋」，不計為 PASS。
+> 2026-11-25 的實機執行細節與完整證據見 [實機驗收報告](./2026-11-25-basemind-desktop-acceptance-report.md)；D3 的 `/basemind-status` 原文、D4／D5、D15 仍待人工續驗。
 
 ---
 
