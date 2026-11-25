@@ -36,9 +36,9 @@ npm view dsh-basemind-plugin version
 
 | 元件 | 需求 |
 |---|---|
-| DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`，宣告於 `engines.dsh`，DSH 會在安裝與啟動時檢查。本版本已於 `0.2.1-rc.5` 實測。 |
+| DeepSeek Harness | `>= 0.2.1-rc.3 < 0.3.0-0`，宣告於 `engines.dsh`，DSH 會在安裝與啟動時檢查。本版本已於 `0.2.2-rc.5` 實測（先前亦於 `0.2.1-rc.5` 實測）。 |
 | Node.js | `>= 24.20.0`（宣告於 `engines`，並以 Volta 固定）。插件是純 ESM，沒有依賴。 |
-| BaseMind | **0.34.0**，固定於 `lib/upstream.js`，並由 `binaryPolicy: 'exact'`（預設，§8）強制：本機 `basemind` 的 major.minor.patch 不符時，會在日誌與 `/basemind-status` 說明後跳過，不會拿來執行；本機找不到相容 binary 時，`binaryDownload: true`（預設，§7）會從 GitHub 安裝這個固定的目標版本。`binaryPolicy: 'minor'` 與 `'any'` 是逃生門；`'any'` 只保留 MCP bridge，Skills、CLI 工具與版本提示全部關閉。已於 Windows 搭配外部 BaseMind **0.34.0** 實測；插件**自己的** managed 下載／安裝路徑已在 **Windows x64** 實測通過（`BASEMIND_REQUIRE_MANAGED_INTEGRATION=1`，2026-11-24）。Linux x64 與 macOS arm64 的 managed 執行已定義在 `.github/workflows/managed-binary.yml`，但**尚未執行**——見 §15。0.29.3–0.33.0 提供的是 mode 型工具而非 verb tools（見 §5.2）。 |
+| BaseMind | **0.34.0**，固定於 `lib/upstream.js`，並由 `binaryPolicy: 'exact'`（預設，§8）強制：本機 `basemind` 的 major.minor.patch 不符時，會在日誌與 `/basemind-status` 說明後跳過，不會拿來執行；本機找不到相容 binary 時，`binaryDownload: true`（預設，§7）會從 GitHub 安裝這個固定的目標版本。`binaryPolicy: 'minor'` 與 `'any'` 是逃生門；`'any'` 只保留 MCP bridge，Skills、CLI 工具與版本提示全部關閉。已於 Windows 搭配外部 BaseMind **0.34.0** 實測；插件**自己的** managed 下載／安裝路徑已在 **Windows x64 本機（2026-11-24）** 與 **CI 的 Windows x64／Linux x64／macOS arm64（`Managed binary` workflow，2026-11-25，全綠）** 實測通過——見 §15。0.29.3–0.33.0 提供的是 mode 型工具而非 verb tools（見 §5.2）。 |
 
 ## 4. 安裝
 
@@ -254,9 +254,9 @@ DSH 對上游文字的適配只存在 `skills/.dsh-adapt.json`；用 `npm run sy
 
 | Gate | 命令 | 證明什麼 | 設定於 | 本次變更實際執行 |
 | --- | --- | --- | --- | --- |
-| 本機／單元 | `npm test` | 所有不需要真實 BaseMind 當受測對象的測試。兩個真實整合檔只有在 `PATH` 或 `BASEMIND_BIN` 找到相容 BaseMind 時才會真的跑，否則 skip。 | `ci.yml` | Windows x64（本機）：454 tests、444 pass、10 skipped（被 gate 的 managed 套件） |
-| 外部 binary 契約 | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | **由插件外部**安裝、用系統 `tar`／`unzip` 解開的 BaseMind 的 MCP／CLI 契約（`compat.yml`）。結構上測不到 managed 安裝。 | `compat.yml`（Ubuntu x64、macOS arm64、Windows x64） | **NOT RUN**（無 GitHub Actions 存取權；兩個套件在 `npm test` 內已對本機真實 0.34.0 實跑過） |
-| Managed 安裝 | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | 插件**自己的**路徑：真下載官方 asset、驗官方 SHA256、解完整 Release Tree、寫 layout-2 記錄、真跑 `basemind --version`、用該 managed binary 跑真 MCP relay（tools／resources）與真 CLI（`managed-binary.yml`）。 | `managed-binary.yml`（Windows x64、Linux x64、macOS arm64；Linux arm64 只能透過 `include_linux_arm64` 輸入啟用） | **Windows x64：2026-11-24 通過兩次**（冷安裝 13.5–55.7 s，隨下載速度變化；暖選型 57–77 ms、0 次網路）。Linux x64／macOS arm64／Linux arm64：**NOT RUN** |
+| 本機／單元 | `npm test` | 所有不需要真實 BaseMind 當受測對象的測試。兩個真實整合檔只有在 `PATH` 或 `BASEMIND_BIN` 找到相容 BaseMind 時才會真的跑，否則 skip。 | `ci.yml` | Windows x64（本機）：455 tests、445 pass、10 skipped（被 gate 的 managed 套件） |
+| 外部 binary 契約 | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | **由插件外部**安裝、用系統 `tar`／`unzip` 解開的 BaseMind 的 MCP／CLI 契約（`compat.yml`）。結構上測不到 managed 安裝。 | `compat.yml`（Ubuntu x64、macOS arm64、Windows x64） | CI 中**尚未執行**（workflow 可用 dispatch 觸發；兩個套件在 `npm test` 內已對本機真實 0.34.0 實跑過） |
+| Managed 安裝 | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | 插件**自己的**路徑：真下載官方 asset、驗官方 SHA256、解完整 Release Tree、寫 layout-2 記錄、真跑 `basemind --version`、用該 managed binary 跑真 MCP relay（tools／resources）與真 CLI（`managed-binary.yml`）。 | `managed-binary.yml`（Windows x64、Linux x64、macOS arm64；Linux arm64 只能透過 `include_linux_arm64` 輸入啟用） | **Windows x64 本機：2026-11-24 通過兩次**（冷安裝 13.5–55.7 s，隨下載速度變化；暖選型 57–77 ms、0 次網路）。**CI：2026-11-25 全綠**——Windows x64、Linux x64、macOS arm64（`Managed binary` 手動 dispatch，commit `72d4fde`，run [45538156378](https://github.com/zengjunlin2022/dsh-basemind-plugin/actions/runs/45538156378)）。Linux arm64：**NOT RUN**（僅 opt-in） |
 
 ### 15.1 Phase 3 效果 Benchmark（2026-11-25）
 
@@ -278,9 +278,7 @@ Gate 契約細節：
 
 managed 路徑只支援 `lib/upstream.js` 列出的 target：`windows-x64`、`linux-x64`、`linux-arm64`、`darwin-arm64`。上游沒有 macOS x64 與 Windows arm64 asset，因此 **不支援**。Linux arm64 預設不排入任何 workflow，因為本 repo 無法確認 `ubuntu-24.04-arm` runner label；要由維護者明確 opt-in。
 
-DSH Desktop 驗收（D1–D15）是另一份人工清單：[docs/2026-11-24-basemind-desktop-acceptance-checklist.md](docs/2026-11-24-basemind-desktop-acceptance-checklist.md)。目前只有打包（D1）與 D2 的 profile 組裝層已驗證；GUI 內項目尚未驗證。
-
-DSH Desktop 驗收（D1–D15）是另一份人工清單：[docs/2026-11-24-basemind-desktop-acceptance-checklist.md](docs/2026-11-24-basemind-desktop-acceptance-checklist.md)。目前只有打包（D1）與 D2 的 profile 組裝層已驗證；GUI 內項目尚未驗證。
+DSH Desktop 驗收（D1–D15）是另一份人工清單：[docs/2026-11-24-basemind-desktop-acceptance-checklist.md](docs/2026-11-24-basemind-desktop-acceptance-checklist.md)。**D1–D15 已於 2026-11-25 全部驗證**（DSH `0.2.2-rc.5`，含真實 desktop profile，以及 managed fallback 所需的獨立 `DSH_HOME`）：[驗收報告](docs/2026-11-25-basemind-desktop-acceptance-report.md)。
 
 ---
 
