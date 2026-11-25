@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 
@@ -30,6 +30,21 @@ async function withEnv(key, value, fn) {
     else process.env[key] = previous;
   }
 }
+
+// The release and compatibility workflows export BASEMIND_BIN so the real
+// integration suites can find a binary. `resolveLaunch` gives that override
+// precedence over the default command, so every unit test here must start
+// without it; the two tests that exercise the override set it themselves.
+const INHERITED_BASEMIND_BIN = process.env.BASEMIND_BIN;
+
+beforeEach(() => {
+  delete process.env.BASEMIND_BIN;
+});
+
+afterEach(() => {
+  if (INHERITED_BASEMIND_BIN === undefined) delete process.env.BASEMIND_BIN;
+  else process.env.BASEMIND_BIN = INHERITED_BASEMIND_BIN;
+});
 
 /** Collect logger warnings. */
 function createLogger() {

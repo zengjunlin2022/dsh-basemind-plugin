@@ -211,7 +211,7 @@ If you are stuck on `0.34.1`, either wait for a plugin release that pins and ver
 Type `/basemind-status` in the composer. It is a human command: it does not call the model and does not consume tokens. It reports whether a binary is present, its path, the found and expected versions, whether they are compatible, the selection source, the cache state, the download state and the two or three actions that would fix the situation.
 
 ```
-BaseMind status - dsh-basemind-plugin 0.2.0
+BaseMind status - dsh-basemind-plugin 0.2.1
   expected upstream : 0.34.0 (exact)
   platform          : windows-x64 (x86_64-pc-windows-msvc)
   present           : yes

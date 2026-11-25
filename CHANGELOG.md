@@ -4,6 +4,12 @@ All notable changes to `dsh-basemind-plugin` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-25
+
+### Fixed
+
+- **The release gate's own environment broke six unit tests.** The release and compatibility workflows export `BASEMIND_BIN` so the real integration suites find a binary, and `resolveLaunch` gives that override precedence over the default command. `test/executable.test.mjs` never isolated the variable, so the six `.cmd`/`comspec` cases failed only in that environment — after the managed gate had already passed, which is how the first `v0.2.0` release run died at `npm test`. The file now clears `BASEMIND_BIN` before every test and restores the inherited value afterwards; the two tests that exercise the override still set it themselves.
+
 ## [0.2.0] - 2026-11-25
 
 ### Added

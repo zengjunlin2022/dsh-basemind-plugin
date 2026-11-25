@@ -211,7 +211,7 @@ BaseMind 的 MCP resources（`basemind://status`，以及 `basemind://outline/{p
 在輸入框打 `/basemind-status`。它是 human command：不經模型、不耗 token。輸出會說明本機是否存在 binary、路徑、找到與期望版本、是否相容、來源、快取狀態、下載狀態，以及兩三個可行的下一步。
 
 ```
-BaseMind status - dsh-basemind-plugin 0.2.0
+BaseMind status - dsh-basemind-plugin 0.2.1
   expected upstream : 0.34.0 (exact)
   platform          : windows-x64 (x86_64-pc-windows-msvc)
   present           : yes
