@@ -87,16 +87,33 @@ Unknown values render "not available" — never a zero, never a fabricated figur
 | zh/en dictionaries carry identical key sets (>40 keys) | PASS |
 | `view: 'summary'` renders nothing; `view: 'page'` renders the shell | PASS |
 | The four views render real payloads (counts, shares, checks, history cap, scope labels, truncated notice) | PASS |
-| Real Desktop UI acceptance (packaged install, theme switch, disable/uninstall, locale switch) | **NOT RUN** |
+| Real Web UI acceptance (packaged install, four tabs on live BaseMind data, theme switch, locale switch, disable/re-enable, 22 open/close cycles) | **PASS** on 2026-11-25 — `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md` |
+| Headless session (no Web server) | **PARTIAL** — composition and no-route degradation proven (dump-config + `test/index.test.mjs`); a full headless turn was NOT RUN (`MISSING_CREDENTIAL` in the isolated home) |
 
-### 4.3 Why the Desktop UI acceptance is NOT RUN, and how to run it
+### 4.3 The real Web UI acceptance run (2026-11-25)
 
-No isolated Desktop profile was installed for this work, and the production desktop profile was
-deliberately left untouched (plan §42, AGENTS.md §6). The structural evidence above cannot
-substitute for a packaged run. Minimal manual steps:
+It ran on an isolated `DSH_HOME` with the packed 0.2.2 tarball installed into the `web` profile, a real
+`dsh web` instance, a real BaseMind 0.34.0 and a real browser. Full steps, evidence and the NOT RUN
+items are in `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md`.
+
+Two results worth carrying back here:
+
+1. **The Configure control is on the package detail page, not the installed list.** The plugin manager
+   renders `button[class*="rowOpen"]` only from `PackageDetail`'s rows section, so the path is
+   **Plugins → 查看 BaseMind → 包含的組件 → 配置**. Our registration already matches that contract
+   (`lib/dashboard/client.js:26` key `dsh-basemind-plugin#dsh-basemind` = `cordis.patch.yml` row
+   `dsh-basemind` + package name); the earlier "no Configure control" reading was an inspection of the
+   list column, not a defect. The READMEs were corrected to name the full path.
+2. **Every tab rendered real data**, including a completed incremental scan (423 ms, 2 files) with its
+   history row, and the loopback-only route family disappeared on disable and returned on re-enable.
+
+The steps below remain the reproduction recipe.
 
 1. `dsh plugin --profile <throwaway> add link:<repo>` (or install the packed tarball) with an isolated `DSH_HOME`.
-2. Open **Plugins** → BaseMind row → **Configure**: the Dashboard opens, first tab Overview, project selector shows the DSH workspaces, English and Chinese copy follow the UI language, theme switches with DSH.
+2. Open **Plugins** → **查看** BaseMind → the component row's **配置** control (the plugin manager only
+   renders that control on the package detail page, not on the installed-plugin list row): the Dashboard
+   opens, first tab Overview, project selector shows the DSH workspaces, English and Chinese copy follow
+   the UI language, theme switches with DSH.
 3. Confirm the four tabs and that no Files module exists; run a full scan once (confirmation names the path); watch the state change; reopen and see the history row.
 4. Disable the bundle: the Configure control and the page disappear; re-enable: they return.
 5. Headless check: start a session without the Web GUI and confirm tools/skills/status still work and no Dashboard route is registered.
@@ -114,7 +131,7 @@ All commands run from the repository root on Windows x64.
 | 5 | `node --test test/dashboard-client.test.mjs` | 9 pass |
 | 6 | `npm run check` | syntax ok: 27 files; bundle manifest ok |
 | 7 | `npm run check:pack` | pack contents ok: 59 files |
-| 8 | `npm test` (part of `npm run verify`) | **522 tests / 502 pass / 0 fail / 20 skipped** (after the independent-review and scoped-re-review fixes) |
+| 8 | `npm test` (part of `npm run verify`) | **526 tests / 506 pass / 0 fail / 20 skipped** (after the independent-review and scoped-re-review fixes, plus the four index-level wiring tests added by the 2026-11-25 Web UI acceptance) |
 | 9 | `npm run verify` | PASS (check + check:pack + test) |
 | 10 | `BASEMIND_DASHBOARD_INTEGRATION=1 BASEMIND_DASHBOARD_DATA_HOME=<warm isolated home> node --test test/integration-dashboard.test.mjs` | **1 pass, 7.0 s** against the real 0.34.0 binary |
 | 11 | `npm run check:skills` | not run separately (no skill files touched; `npm run verify` does not include it) |
@@ -132,9 +149,9 @@ the 22 MB grammar bundle. The real gate was executed once here (row 10) and pass
 | P2 Dashboard open and idle | Overview caches 5 s; no interval unless a submitted scan is active; no other workspace is queried | PASS |
 | P3 Tab switching | each tab has its own effect with an `AbortController`; Overview cache prevents repeat queries within 5 s | PASS |
 | P4 Fast workspace switching | aborted controller per view; results of a switched-away workspace are dropped by the abort check | PASS (unit-level) |
-| P5 Agent under load | reads are serialised Host-wide (one child, queue ≤ 4), identical requests coalesce; no Agent path modified | PASS by design; no latency benchmark was run (NOT RUN) |
-| P6 During a scan | one scan per machine, progress not simulated, polling only while the tab is open, stops on completion | PASS |
-| P7 Open/close cycles | every effect returns cleanup; no module-level timer or listener; route disposers owned by the plugin effect | PASS by inspection and unit tests; no 20-cycle Desktop measurement (NOT RUN) |
+| P5 Agent under load | reads are serialised Host-wide (one child, queue ≤ 4), identical requests coalesce; no Agent path modified | PASS by design; no latency benchmark was run (**NOT RUN**, 2026-11-25 Web UI acceptance: the isolated home has no LLM credential) |
+| P6 During a scan | one scan per machine, progress not simulated, polling only while the tab is open, stops on completion | PASS, and measured live: `GET /scan` on tab open, `POST /scan` → 202, two chained `GET /scan` polls, then zero dashboard requests through 12 s of idle |
+| P7 Open/close cycles | every effect returns cleanup; no module-level timer or listener; route disposers owned by the plugin effect | **PASS** — 22 open/close cycles on the real UI: DOM node count constant at 1224, host processes unchanged (basemind 6 / node 12 / DSH 18), no dashboard request while idle afterwards |
 
 No model tokens are consumed by any of this; every number on the page comes from BaseMind or the
 Host's own job records.
@@ -179,13 +196,13 @@ Only items with evidence are PASS; the rest are labelled.
 
 | Item | Verdict |
 | --- | --- |
-| Plugins-page entry | **PARTIAL** — registration and key match are unit-verified; the rendered control was not seen on a real Desktop |
-| Independent page | **PARTIAL** — same reason; contract verified against the installed slot contract |
-| Workspace selector | **PARTIAL** — host route returns registry items; UI render tested inline |
-| Four pages render | **PARTIAL** — each view rendered against real payload shapes in a module-loader sandbox |
+| Plugins-page entry | **PASS** — the real UI shows the `配置 BaseMind（工作區感知）` button on the package detail page's component row; it opens the page (acceptance report §2) |
+| Independent page | **PASS** — a full page inside the row-detail view with its own tab bar, not a Settings card or a sidebar entry |
+| Workspace selector | **PASS** — the live selector lists the registry entry (`default-workspace — C:\…`) and passes its registry id |
+| Four pages render | **PASS** — Overview / Scan / Diagnostics / Statistics all rendered live BaseMind data (2,061 files, 1,042 blobs, 50.9 MB, 7 languages) |
 | No Files module | **PASS** (does not exist in code or routes) |
-| Native theme / locale | **PARTIAL** — uses `--dsw-*` tokens, theme switch not exercised |
-| Disappears on disable/uninstall | **PARTIAL** — owned by the plugin effect; not exercised on a Desktop |
+| Native theme / locale | **PASS** — `浅色 / 深色 / 跟随系统` switch exercised (dark verified), 8-language list recorded, en and zh verified, unsupported `ja` falls back to English cleanly |
+| Disappears on disable/uninstall | **PASS** for disable/re-enable (control and route family, 0 buttons + 401 → button back + 200); the UI `卸载` button was not pressed — CLI removal stands in |
 
 ### Data
 
@@ -221,15 +238,15 @@ Only items with evidence are PASS; the rest are labelled.
 | No new Agent tools / skills / bootstrap change | **PASS** |
 | No resident daemon / UI relay | **PASS** |
 | Passive view does not index | **PASS** (status does not build an index; real gate asserts not-indexed before the scan) |
-| No obvious repeatable Agent regression | **NOT RUN** — no 30-sample latency benchmark |
-| No timer/listener/process leak | **PASS by inspection + dispose tests**; 20-cycle Desktop run NOT RUN |
+| No obvious repeatable Agent regression | **NOT RUN** — no 30-sample latency benchmark (no LLM credential in the isolated home) |
+| No timer/listener/process leak | **PASS** — 22 open/close cycles on the real UI: DOM nodes constant, host processes unchanged, zero dashboard requests while idle afterwards |
 
 ### Compatibility
 
 | Item | Verdict |
 | --- | --- |
-| Existing plugin regression | **PASS** (`npm test`, 502 pass) |
-| Headless | **PASS by design** (webServer optional, no required injection) — no headless runtime run in this environment (**NOT RUN** for a live headless session) |
+| Existing plugin regression | **PASS** (`npm test`, 506 pass / 20 skipped / 0 fail) |
+| Headless | **PARTIAL** — `--dump-config` shows the plugin row in a headless composition with no `@deepseek-ai/dsh-web-app` patch, the row booted to `turn_start`, and `test/index.test.mjs` covers the no-`webServer` path; a full headless turn was **NOT RUN** (`MISSING_CREDENTIAL`) |
 | Safe degradation without UI API | **PASS** (unit test: registration without a web server is a no-op) |
 | Manifest / skills / pack checks | **PASS** (check, check:pack; check:skills not separately needed — no skill file changed) |
 | Full regression gate | **PASS** (`npm run verify`) |
@@ -262,5 +279,9 @@ Full evidence: [review fix report](./2026-11-25-basemind-dashboard-review-fix-re
 ## 12. Manual follow-up owned by the user
 
 1. Review the diff and commit (no commit was created).
-2. Run the Desktop UI acceptance steps in §4.3 on a throwaway profile.
-3. Optionally record a 30-sample P5 latency benchmark; the current report marks it NOT RUN.
+2. ~~Run the Desktop UI acceptance steps in §4.3 on a throwaway profile.~~ Done on 2026-11-25 —
+   `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md`.
+3. Optionally record a 30-sample P5 latency benchmark, and a full headless turn on a machine that has an
+   LLM credential; the current report marks both NOT RUN.
+4. Decide whether to translate the two Host-supplied English scope strings (`lib/dashboard/service.js:396-397`)
+   so the Chinese Statistics tab is fully localised (acceptance report §4.2).

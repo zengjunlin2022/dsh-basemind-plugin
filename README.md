@@ -211,7 +211,7 @@ If you are stuck on `0.34.1`, either wait for a plugin release that pins and ver
 Type `/basemind-status` in the composer. It is a human command: it does not call the model and does not consume tokens. It reports whether a binary is present, its path, the found and expected versions, whether they are compatible, the selection source, the cache state, the download state and the two or three actions that would fix the situation.
 
 ```
-BaseMind status - dsh-basemind-plugin 0.2.1
+BaseMind status - dsh-basemind-plugin 0.2.2
   expected upstream : 0.34.0 (exact)
   platform          : windows-x64 (x86_64-pc-windows-msvc)
   present           : yes
@@ -254,7 +254,7 @@ Three separate gates. They are deliberately **not** interchangeable — passing 
 
 | Gate | Command | What it proves | Configured in | Run for this change set |
 | --- | --- | --- | --- | --- |
-| Local/unit | `npm test` | Everything that does not need a real BaseMind as a subject. The two real suites run only when a compatible BaseMind is on `PATH` or in `BASEMIND_BIN`; otherwise they skip. | `ci.yml` | Windows x64, locally: 522 tests, 502 pass, 20 skipped (the gated real-binary suites, including the new Dashboard gate) |
+| Local/unit | `npm test` | Everything that does not need a real BaseMind as a subject. The two real suites run only when a compatible BaseMind is on `PATH` or in `BASEMIND_BIN`; otherwise they skip. | `ci.yml` | Windows x64, locally: 526 tests, 506 pass, 20 skipped (the gated real-binary suites, including the new Dashboard gate) |
 | External binary contract | `BASEMIND_REQUIRE_INTEGRATION=1 node --test test/integration.test.mjs test/integration-legacy.test.mjs` | The MCP/CLI contract of a BaseMind build installed **outside** the plugin and unpacked with the system `tar`/`unzip` (`compat.yml`). Structurally cannot detect a broken managed install. | `compat.yml` (Ubuntu x64, macOS arm64, Windows x64) | **NOT RUN** in CI yet (the workflow is dispatchable; the two suites did run locally against a real 0.34.0 inside `npm test`) |
 | Dashboard (real BaseMind) | `BASEMIND_DASHBOARD_INTEGRATION=1 BASEMIND_DASHBOARD_DATA_HOME=<warm isolated home> node --test test/integration-dashboard.test.mjs` | The Dashboard's own read paths and scans against a real binary: unindexed Overview, explicit full scan, indexed Overview, incremental scan, doctor, statistics scopes and pre-spawn path refusal. | not in CI yet (needs a warm grammar cache) | **Windows x64 locally: 1 pass, 7.0 s** on 2026-11-25 |
 | Managed install | `BASEMIND_REQUIRE_MANAGED_INTEGRATION=1 node --test test/integration-managed.test.mjs` | The plugin's **own** path: real download of the pinned asset, published-SHA256 verification, complete tree extraction, layout-2 install record, real `basemind --version`, real MCP relay tools/resources and real CLI verbs from that managed binary (`managed-binary.yml`). | `managed-binary.yml` (Windows x64, Linux x64, macOS arm64; Linux arm64 only via the `include_linux_arm64` input) | **Windows x64 locally: passed twice on 2026-11-24** (cold install 13.5–55.7 s, network-dependent; warm selection 57–77 ms, 0 network). **CI: all green on 2026-11-25** for Windows x64, Linux x64 and macOS arm64 (manual `Managed binary` dispatch on `72d4fde`, run [45538156378](https://github.com/zengjunlin2022/dsh-basemind-plugin/actions/runs/45538156378)). Linux arm64: **NOT RUN** (opt-in only) |
@@ -287,7 +287,7 @@ DSH Desktop acceptance (D1–D15) is a separate manual checklist: [docs/2026-11-
 
 ## 16. Optional Dashboard page (web GUI)
 
-When the host composes a Web server, the bundle also registers a small, read-only-first Dashboard on the Plugins page: **Plugins → the BaseMind row → Configure**. It is a page of the plugin, not a Settings card and not a new sidebar entry. Without a Web server (headless CLI, an older host) nothing is registered and the rest of the plugin is unchanged.
+When the host composes a Web server, the bundle also registers a small, read-only-first Dashboard on the Plugins page: **Plugins → 查看 BaseMind → the component row's Configure control** (the plugin manager renders that control on the package detail page, not on the installed-plugin list row). It is a page of the plugin, not a Settings card and not a new sidebar entry. Without a Web server (headless CLI, an older host) nothing is registered and the rest of the plugin is unchanged.
 
 - **Projects.** The selector lists the directories in the DSH Workspace registry and passes a registry id; the Host never accepts an arbitrary path from the browser. Switching a project here never changes an Agent's working directory, and the first entry is selected because a Host-only plugin has no reliable "current session" resolver.
 - **Overview.** Index health (`ready`, `not-indexed`, …), indexed file count, blob count, index size, language distribution with share bars, most-imported files, oversized files and BaseMind's own notice. One read-only `basemind status --json` call, cached for 5 seconds.

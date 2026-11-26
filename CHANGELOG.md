@@ -4,7 +4,7 @@ All notable changes to `dsh-basemind-plugin` are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.2] - 2026-11-25
 
 ### Added
 
@@ -12,7 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **A narrow Host route family** `/api/dsh-basemind-dashboard/*` behind a loopback plus same-origin fence: five exact routes for six operations over registry workspace ids, no arbitrary verb, cwd, environment or path. Reads are serialised Host-wide (one BaseMind child at a time, bounded queue, identical-request coalescing) and cached for 5 seconds; scans are explicit, machine-wide serialised, and unaffected by a client disconnect.
 - **`lib/dashboard/`**: `contracts.js` (JSON normalisers that keep unknown values `null`, never `0`), `run.js` (argv-only spawn through `ctx.subprocess.spawn`), `workspaces.js` (`ctx.workspaceRegistry`), `history.js` (bounded atomic JSON in the plugin cache), `service.js`, `routes.js`, `client.js`.
 - **Two settings**: `dashboard` (default `true`, passive route registration only) and `dashboardHistory` (default `true`; the only Dashboard file written is its own bounded scan history under `$DSH_HOME/cache/dsh-basemind-plugin/dashboard/`). Both are declared in `cordis.patch.yml`.
-- **A real-base-binary Dashboard gate**: `test/integration-dashboard.test.mjs` (opt in with `BASEMIND_DASHBOARD_INTEGRATION=1` and a warm `BASEMIND_DASHBOARD_DATA_HOME`) plus 65 unit tests over the contracts, history, service, routes, workspace provider and client bundle. `scripts/check-pack.mjs` now requires the seven Dashboard modules in the tarball.
+- **A real-base-binary Dashboard gate**: `test/integration-dashboard.test.mjs` (opt in with `BASEMIND_DASHBOARD_INTEGRATION=1` and a warm `BASEMIND_DASHBOARD_DATA_HOME`) plus 65 unit tests over the contracts, history, service, routes, workspace provider and client bundle, and four index-level wiring tests in `test/index.test.mjs` (Web server present at apply, arriving late, absent, and the shutdown ordering). `scripts/check-pack.mjs` now requires the seven Dashboard modules in the tarball.
 
 ### Fixed
 
@@ -22,7 +22,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - BaseMind 0.34.0 exposes no scan progress, percentage or cancel API, and no BaseMind-reported last-scan timestamp. The page says so and shows only real state, elapsed time and the last Dashboard-submitted scan; it never simulates progress or fills unknown values with 0.
 - Disk usage, telemetry and process RSS are machine-global (RSS is the query process's own peak), and they are labelled that way. `Estimated Tokens Saved` stays BaseMind's heuristic against a grep+read baseline.
-- The Dashboard's real Desktop UI acceptance (packaged install, theme and locale switching, disable/uninstall) is **NOT RUN** in this change set; the structural contract is covered by `test/dashboard-client.test.mjs`. Steps are in `docs/2026-11-25-basemind-dashboard-execution-report.md` §4.3.
+- The Dashboard's real Web UI acceptance ran on 2026-11-25 against an isolated `DSH_HOME`, a real `dsh web` instance and a real BaseMind 0.34.0: the Configure control, the four tabs on live data (2,061 files), a completed incremental scan with its history row, English and Chinese copy, dark theme, disable/re-enable of the route family, and 22 open/close cycles with no DOM or child-process growth. Evidence: `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md`. Still **NOT RUN**: the 30-sample Agent latency benchmark (no LLM credential in the isolated home) and a full headless turn.
+- The Configure control lives on the **package detail** page's component row (**Plugins → 查看 BaseMind → 包含的組件 → 配置**), not on the installed-plugin list row; the plugin manager only renders it from `PackageDetail`. Both READMEs now name that path.
 - No Agent tool, skill, prompt section, MCP tool, timer, relay or daemon was added. Nothing runs while the page is closed, and a passive view never builds an index or downloads a binary.
 ## [0.2.1] - 2026-11-25
 

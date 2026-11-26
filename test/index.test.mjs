@@ -128,6 +128,10 @@ function createFakeContext({
   const providers = new Map()
   const listeners = new Map()
   const current = { directory: defaultDirectory }
+  // Optional Cordis services mounted through `provide()`, and the `ctx.inject`
+  // callbacks still waiting for one of them (the Dashboard waits for `webServer`).
+  const services = new Map()
+  const pendingInjections = []
 
   const ctx = {
     warnings,
@@ -212,10 +216,37 @@ function createFakeContext({
     },
     skillProviders,
     get(key) {
+      if (services.has(key)) return services.get(key)
       if (key === 'mcpResources') return ctx.mcpResources
       if (key === 'commands') return ctx.commands
       if (key === 'skills') return ctx.skills
       return undefined
+    },
+    /**
+     * Cordis `ctx.inject`: run the callback now when every named service is
+     * present, otherwise when `provide()` mounts the last one. The Dashboard's
+     * late Web-server registration is the only caller.
+     */
+    inject(names, callback) {
+      const wanted = Array.isArray(names) ? names : [names]
+      const ready = () => wanted.every((key) => services.has(key))
+      const entry = { wanted, callback }
+      if (ready()) callback()
+      else pendingInjections.push(entry)
+      return () => {
+        const index = pendingInjections.indexOf(entry)
+        if (index >= 0) pendingInjections.splice(index, 1)
+      }
+    },
+    /** Mount (or replace) an optional service and release the waiting injections. */
+    provide(key, service) {
+      services.set(key, service)
+      for (const entry of [...pendingInjections]) {
+        if (!entry.wanted.every((name) => services.has(name))) continue
+        pendingInjections.splice(pendingInjections.indexOf(entry), 1)
+        entry.callback()
+      }
+      return service
     },
     on(event, listener) {
       const list = listeners.get(event) ?? []
@@ -309,6 +340,46 @@ async function unload(ctx) {
     if (typeof cleanup === 'function') await cleanup()
   }
   ctx.cleanups.length = 0
+}
+
+/** The exact paths the Dashboard registers; the client mirrors the same family. */
+const DASHBOARD_ROUTE_PATHS = [
+  '/api/dsh-basemind-dashboard/diagnostics',
+  '/api/dsh-basemind-dashboard/overview',
+  '/api/dsh-basemind-dashboard/scan',
+  '/api/dsh-basemind-dashboard/statistics',
+  '/api/dsh-basemind-dashboard/workspaces',
+]
+
+/**
+ * A stand-in for the host Web server: it keys exact routes by path alone and
+ * throws on a duplicate, so a second registration is observable.
+ * @param {string[]} [events] records disposals, for the shutdown-order test
+ */
+function fakeWebServer(events = []) {
+  const routes = []
+  let registerCalls = 0
+  return {
+    routes,
+    get registerCalls() {
+      return registerCalls
+    },
+    register(route) {
+      registerCalls += 1
+      if (routes.some((existing) => existing.path === route.path)) {
+        throw new Error(`duplicate route ${route.path}`)
+      }
+      routes.push(route)
+      let disposed = false
+      return () => {
+        if (disposed) return
+        disposed = true
+        events.push('route:dispose')
+        const index = routes.indexOf(route)
+        if (index >= 0) routes.splice(index, 1)
+      }
+    },
+  }
 }
 
 test('the module exports the documented plugin entry', () => {
@@ -847,4 +918,101 @@ test('failOnStartupError surfaces an unresolvable launcher from apply', async ()
     /was not found on PATH/,
   )
   await unload(ctx)
+})
+
+test('a Web server mounted before apply registers the Dashboard route family exactly once', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  const server = ctx.provide('webServer', fakeWebServer())
+
+  apply(ctx, fakeSettings({ dashboard: true }))
+  await waitFor(() => server.registerCalls > 0, { label: 'the Dashboard route family' })
+
+  // `apply` registers directly and the `ctx.inject` callback runs at the same
+  // time; the `dashboardRegistered` guard is what keeps it to one family.
+  assert.equal(server.registerCalls, DASHBOARD_ROUTE_PATHS.length)
+  assert.deepEqual(server.routes.map((route) => route.path).sort(), DASHBOARD_ROUTE_PATHS)
+  for (const route of server.routes) assert.equal(route.kind, 'exact')
+  assert.deepEqual(
+    ctx.warnings.filter((warning) => /Dashboard could not be registered/.test(warning)),
+    [],
+    'a resolved Web server must not fall into the failure path',
+  )
+})
+
+test('a Web server that arrives after the row mounted still registers the Dashboard once', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ dashboard: true }))
+  await waitFor(() => ctx.tools.get('mcp__basemind__code') !== undefined, { label: 'the MCP tools' })
+
+  // The composition mounted no Web server: the plugin stayed passive instead of
+  // failing, so the agent-facing surfaces are the only thing that came up.
+  assert.equal(ctx.get('webServer'), undefined)
+
+  const server = ctx.provide('webServer', fakeWebServer())
+  await waitFor(() => server.registerCalls > 0, { label: 'the late Dashboard registration' })
+  assert.equal(server.registerCalls, DASHBOARD_ROUTE_PATHS.length)
+
+  // Mounting the same service again must not run the registration a second time.
+  ctx.provide('webServer', server)
+  assert.equal(server.registerCalls, DASHBOARD_ROUTE_PATHS.length)
+})
+
+test('without a Web server the Dashboard registers no route and leaves the agent surfaces intact', async (t) => {
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  apply(ctx, fakeSettings({ dashboard: true }))
+  await waitFor(() => ctx.tools.get('mcp__basemind__code') !== undefined, { label: 'the MCP tools' })
+
+  assert.equal(ctx.get('webServer'), undefined)
+  assert.ok(ctx.tools.schemas().length > 0, 'the tools are registered')
+  assert.deepEqual(
+    ctx.warnings.filter((warning) => /Dashboard could not be registered/.test(warning)),
+    [],
+    'a headless composition degrades silently, with no warning',
+  )
+})
+
+test('shutdown disposes the Dashboard routes before it terminates the relays', async (t) => {
+  const events = []
+  const ctx = createFakeContext()
+  t.after(() => unload(ctx))
+  // The version probe is a child of its own that the binary manager ends while it
+  // is disposed; only the `serve` relay is the process the routes front.
+  const argvByHandle = new Map()
+  const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+  ctx.subprocess.spawn = (spec) => {
+    const handle = spawn(spec)
+    argvByHandle.set(handle, (spec.argv ?? []).join(' '))
+    return handle
+  }
+  const server = ctx.provide('webServer', fakeWebServer(events))
+  apply(ctx, fakeSettings({ dashboard: true }))
+
+  await waitFor(() => ctx.tools.get('mcp__basemind__code') !== undefined, { label: 'the MCP tools and their relay' })
+  assert.ok(server.registerCalls > 0, 'the route family is registered')
+
+  const live = []
+  for (const handle of ctx.spawned) {
+    if ((argvByHandle.get(handle) ?? '').includes('--version')) continue
+    const terminate = handle.terminate.bind(handle)
+    handle.terminate = () => {
+      events.push('relay:terminate')
+      return terminate()
+    }
+    live.push(handle)
+  }
+  assert.ok(live.length >= 1, 'a live relay is running behind the routes')
+
+  await unload(ctx)
+
+  const terminateIndex = events.indexOf('relay:terminate')
+  assert.ok(terminateIndex >= 0, 'shutdown terminated the relay')
+  assert.equal(events.filter((event) => event === 'route:dispose').length, DASHBOARD_ROUTE_PATHS.length)
+  assert.ok(
+    events.lastIndexOf('route:dispose') < terminateIndex,
+    'every Dashboard route is disposed before the relay it fronts is terminated: ' + JSON.stringify(events),
+  )
+  assert.equal(server.routes.length, 0, 'no route is left registered after shutdown')
 })
