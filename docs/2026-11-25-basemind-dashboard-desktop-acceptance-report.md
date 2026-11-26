@@ -125,14 +125,19 @@ click 該按鈕 → [data-plugin-config] 掛載，出現「專案／總覽／掃
 | 3 秒輪詢只在提交後出現、完成即停 | **PASS**：`SCAN_POLL_MS = 3000`（`client.js:30`）、鏈式下一次輪詢（`client.js:595`）。網路序列：進入 Scan tab `GET /scan`(#62) → `POST /scan` 202(#63) → `GET /workspaces`(#64) → `GET /scan`(#65, #66) 之後停止；完成後閒置 12 秒沒有任何 dashboard 請求 |
 | Overview 反映 Dashboard 自己的掃描紀錄 | **PASS**：掃描後 Overview 由「尚未由 Dashboard 發起掃描」變成「完成／增量掃描／2026/11/25 20:18:49／423 ms／Scanned 2 · Updated 0 · Removed 0」 |
 
-### 4.2 語言混排觀察（低嚴重度，未修）
+### 4.2 語言混排觀察（2026-11-26 已修）
 
-Statistics 的「統計範圍」在中文介面下有兩條說明是英文：
+當時 Statistics 的「統計範圍」在中文介面下有兩條說明是英文：
 `machine-global cache directory (shared by every workspace on this machine)`、
 `machine-global BaseMind tool telemetry; not filtered per workspace`。
-來源是 Host payload 的硬編字串 `lib/dashboard/service.js:396-397`，client 直接輸出（`client.js` 的
-`data.scopes.cache`／`data.scopes.telemetry`），不像另外兩條走自己的字典（`client.js:221`）。
-影響：中文介面文案不一致，無功能影響。**修正與否待使用者決定**（本會話未改產品碼）。
+來源是 Host payload 的硬編字串（`lib/dashboard/service.js:396-397`），client 直接輸出
+（`data.scopes.cache`／`data.scopes.telemetry`），不像另外兩條走自己的字典。
+
+**已修（2026-11-26）**：這兩條改由 client 字典輸出（`statistics.scope.cache`／`statistics.scope.telemetry`，
+`lib/dashboard/client.js:113-118`、`:221-226`），zh 與 en 各自正確；Host payload 的 `scopes` 欄位保留為
+API 事實宣告、不再直接顯示。回歸測試：`test/dashboard-client.test.mjs`
+「StatisticsView renders the scope copy in the UI language, not the payload text」。實機確認見
+`docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md` §3.1。
 
 ## 5. T4：locale 與 theme
 

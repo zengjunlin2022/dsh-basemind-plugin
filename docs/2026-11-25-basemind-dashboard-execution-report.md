@@ -289,6 +289,8 @@ Full evidence: [review fix report](./2026-11-25-basemind-dashboard-review-fix-re
    because the test credential is only usable from the Desktop process; to close it, point the
    headless profile's route at a dedicated `apiKeyEnv` and set that variable at launch
    (`DSH_TEST\docs\README.md` §7).
-4. Decide whether to translate the two Host-supplied English scope strings (`lib/dashboard/service.js:396-397`)
-   so the Chinese Statistics tab is fully localised (acceptance report §4.2; the same text was observed
-   in the Desktop on 2026-11-26).
+4. ~~Decide whether to translate the two Host-supplied English scope strings (`lib/dashboard/service.js:396-397`).~~
+   Done on 2026-11-26: the Statistics scope copy now comes from the client dictionary
+   (`statistics.scope.cache` / `statistics.scope.telemetry`) instead of the English payload strings, so the
+   Chinese tab is fully localised while English keeps its own copy
+   (`docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md` §3.1).

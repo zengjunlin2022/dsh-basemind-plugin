@@ -62,8 +62,24 @@
 
 截圖：`D:\02_zengjunlin\DSH_TEST\scratch\p5-acceptance\overview-desktop.png`（真實 Desktop、淺色主題、zh）。
 
-語言觀察與前一份報告一致：Statistics 的「統計範圍」在中文介面仍有兩條英文（Host payload 硬編字串
-`lib/dashboard/service.js:396-397`），本會話未改產品碼。
+語言觀察：Statistics 的「統計範圍」當時在中文介面仍有兩條英文（Host payload 硬編字串
+`lib/dashboard/service.js:396-397`），已於同日修正並在此環境複驗，見 §3.1。
+
+### 3.1 Scope 文案本地化（2026-11-26 修正後複驗）
+
+- 修改：`lib/dashboard/client.js` 新增 zh/en 字典鍵 `statistics.scope.cache`、`statistics.scope.telemetry`，
+  Statistics 的「統計範圍」改由字典輸出；Host payload 的 `data.scopes.*` 保留為 API 事實宣告、不再直接顯示。
+- 回歸測試：`test/dashboard-client.test.mjs` 新增「StatisticsView renders the scope copy in the UI language,
+  not the payload text」（zh 字典渲染時出現中文、且不得出現 payload 的 `machine-global`）；
+  原本那條測試改為斷言兩條新鍵並斷言 payload 英文不再外洩。
+- 測試結果：`node --test test/dashboard-client.test.mjs` 13 pass；`npm test` **527 tests / 507 pass / 0 fail / 20 skipped**；
+  `npm run check` ok。
+- 實機複驗（同一測試 Desktop，重新啟動載入新代碼）：`統計範圍` 四條全為中文——
+  「磁碟與 telemetry 為整台機器的全域統計，不是本專案獨享。」、
+  「Estimated Tokens Saved 是 BaseMind 對照 grep+讀檔基線的啟發式估算，不是 API 計費節省。」、
+  「快取目錄是整台機器共用的，本機每個工作區共用同一份。」、
+  「BaseMind 工具遙測是整台機器的統計，未依工作區分開計算。」，且整個 pane 不含 `machine-global`。
+  截圖：`D:\02_zengjunlin\DSH_TEST\scratch\p5-acceptance\stats-zh-scope.png`。
 
 ## 4. P5：Dashboard 負載下的 Agent 延遲（已量測）
 

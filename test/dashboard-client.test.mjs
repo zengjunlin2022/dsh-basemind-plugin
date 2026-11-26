@@ -460,20 +460,22 @@ test('DiagnosticsView renders each check with its own verdict', () => {
   assert.match(text, /diagnostics\.readonly/)
 })
 
+/** One ready Statistics payload, as the Host sends it (scope strings included). */
+function statisticsData() {
+  return {
+    window: '24h',
+    cache: { totalBytes: 4096, components: [{ name: 'views', bytes: 2048 }], cliProcessPeakRssBytes: 84230144, blobCount: 2, orphanBlobCount: 0, blobAccountingOk: true, repoGroups: 1, legacyIndexes: 0, lastGc: null, views: [] },
+    telemetry: { window: '24h', totalCalls: 12, totalResponseBytes: 900, estimatedTokensSaved: 42, perTool: [{ tool: 'code_outline', calls: 12, estTokensSaved: 42 }], perBaseline: [], truncated: true, note: 'heuristic' },
+    scopes: { cache: 'machine-global cache', telemetry: 'machine-global telemetry', processMemory: 'the query process' },
+    capabilities: {},
+  }
+}
+
 test('StatisticsView labels the machine-global scope and the heuristic estimate', () => {
   stub.clear()
   const tree = exports.__internals.StatisticsView({
     t: (key) => key,
-    state: {
-      state: 'ready',
-      data: {
-        window: '24h',
-        cache: { totalBytes: 4096, components: [{ name: 'views', bytes: 2048 }], cliProcessPeakRssBytes: 84230144, blobCount: 2, orphanBlobCount: 0, blobAccountingOk: true, repoGroups: 1, legacyIndexes: 0, lastGc: null, views: [] },
-        telemetry: { window: '24h', totalCalls: 12, totalResponseBytes: 900, estimatedTokensSaved: 42, perTool: [{ tool: 'code_outline', calls: 12, estTokensSaved: 42 }], perBaseline: [], truncated: true, note: 'heuristic' },
-        scopes: { cache: 'machine-global cache', telemetry: 'machine-global telemetry', processMemory: 'the query process' },
-        capabilities: {},
-      },
-    },
+    state: { state: 'ready', data: statisticsData() },
     window: '24h',
     onWindow: () => {},
     onReload: () => {},
@@ -483,6 +485,45 @@ test('StatisticsView labels the machine-global scope and the heuristic estimate'
   assert.match(text, /code_outline/)
   assert.match(text, /statistics\.global/)
   assert.match(text, /statistics\.heuristic/)
-  assert.match(text, /machine-global telemetry/)
+  assert.match(text, /statistics\.scope\.cache/)
+  assert.match(text, /statistics\.scope\.telemetry/)
+  // The payload's own scope strings are Host data, not UI copy: rendering them
+  // verbatim is how English used to leak into a Chinese page.
+  assert.doesNotMatch(text, /machine-global telemetry/)
   assert.match(text, /views/)
+})
+
+test('StatisticsView renders the scope copy in the UI language, not the payload text', () => {
+  stub.clear()
+  const dictionaries = []
+  exports.apply({
+    effect: (fn) => fn(),
+    locale: {
+      register(_name, dicts) {
+        dictionaries.push(dicts)
+        return () => {}
+      },
+    },
+    slots: {
+      inject(_name, callback) {
+        callback()
+        return () => {}
+      },
+      register() {
+        return () => {}
+      },
+    },
+  })
+  const zh = dictionaries[0].zh
+  const tree = exports.__internals.StatisticsView({
+    t: (key) => zh[key] ?? key,
+    state: { state: 'ready', data: statisticsData() },
+    window: '24h',
+    onWindow: () => {},
+    onReload: () => {},
+  })
+  const text = textOf(tree)
+  assert.match(text, /快取目錄是整台機器共用的/)
+  assert.match(text, /未依工作區分開計算/)
+  assert.doesNotMatch(text, /machine-global/)
 })
