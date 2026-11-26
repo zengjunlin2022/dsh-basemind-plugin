@@ -141,3 +141,62 @@ DSH 插件契約優先查官方文件及目標 runtime 的實際服務介面，�
 - 單元測試不得連網、不得呼叫真實 `basemind`、不得寫出 `os.tmpdir()`；下載用本地 mock server／注入 `fetch`，解壓用 fixture 壓縮包，子程序用注入的 spawn adapter。
 - 必須有反向斷言：`binaryDownload:false` 時任何路徑都是 0 次網路、0 次快取寫入；sha256 不符後不得再執行 `--version`。
 - 併發案例（多 session／多 process 只下載一次、stale lock 接手、取消只取消自己的等待）不得以 sleep 湊時序；用可注入的 clock／sleep。
+
+## 9. DSH Desktop 獨立開發測試環境
+
+### 9.1 環境定位
+
+- DSH 運行時測試固定使用官方 Desktop Development 環境，根目錄 `D:\02_zengjunlin\DSH_TEST`；架構、隔離機制、升級與排錯見 `D:\02_zengjunlin\DSH_TEST\docs\README.md`。
+- 測試源碼在 `D:\02_zengjunlin\DSH_TEST\src\deepseek-harness`，tag `dsh-v0.2.2-rc.5`，與正式 Desktop 0.2.2-rc.5 同版本。
+- 正式 DSH Desktop（`C:\Users\sanny\.dsh`）只用於日常工作與已發布版本；不得在正式 DSH 做插件運行時開發測試。
+- 此絕對路徑只是本機配置，不得硬編碼進產品源碼、manifest 或 CI；其他平台使用各自的等效隔離環境。
+
+### 9.2 強制測試規則
+
+- 涉及 DSH runtime 的驗證（載入、工具註冊、MCP、Dashboard、Daemon、安裝、重載、兼容性）必須在測試環境進行；單元測試、型別檢查、lint、`npm run check` 可直接在本 repo 執行。
+- 跑 runtime 驗證前先 `status-test.ps1`；環境已存在必須復用，不得重複 clone 或重建。環境失效時最小修復，不得回退到正式 DSH 測試。
+- 插件以 `link:` 掛載到測試 profile；本 repo 無 build 步驟，改完源碼跑 `npm run check`，再 `restart-test.ps1` 即載入新代碼。不得假設 Hot Reload 存在。
+- 任何停止／重啟只允許針對測試實例；不得按名稱批次終止進程，也不得動正式 DSH 或正式 BaseMind daemon。
+
+### 9.3 BaseMind 隔離規則（已實測）
+
+- `BASEMIND_DATA_HOME=D:\02_zengjunlin\DSH_TEST\basemind\data`、`BASEMIND_COMMS_DIR=D:\02_zengjunlin\DSH_TEST\basemind\comms`。
+- 兩者寫在測試 profile patch 的 `dsh-basemind` row `config.env`，`start-test.ps1` 也以進程環境設定一次；`lib/executable.js` 的 `scrubEnv` 只清 `DSH_*` 與敏感變數，`BASEMIND_*` 會傳給 relay 與其 daemon。
+- 測試 relay 由插件下載 managed binary 到 `desktop-home\cache\dsh-basemind-plugin\`，不共用正式 cache；`config.command` 可指向其他只讀 binary，但不得讓測試寫入正式 data home。
+- 測試 daemon 以帶測試 env 的 `basemind comms stop` 停止（`stop-test.ps1` 已封裝）；禁止 `--all`，禁止停正式 daemon。
+- 索引與記憶測試只用 `fixtures\vue3-demo`、`fixtures\java-demo` 等小型 repo；不要對真實業務項目全量掃描，也不要複製正式索引／記憶。
+
+### 9.4 管理命令（已在 Windows 實測）
+
+```powershell
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\status-test.ps1          # TEST/FORMAL 狀態
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\start-test.ps1           # 啟動測試 Desktop（冪等）
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\restart-test.ps1         # 只重啟測試 Desktop
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\stop-test.ps1            # 只停測試 Desktop 與其 BaseMind
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\verify-test.ps1          # 隔離驗證，exit 0 = PASS
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\build-test.ps1           # 重建來源（必要時加 -Install）
+pwsh -File D:\02_zengjunlin\DSH_TEST\scripts\install-plugin-test.ps1  # 重新掛載本 repo（app 需先停止）
+```
+
+模型憑據只存在 `desktop-home\.credentials.yaml`（或啟動進程的環境變數）；不要把 key 寫入腳本、文檔或 repo。
+
+### 9.5 開發工作流
+
+```text
+status-test.ps1 檢查測試環境
+    ↓
+修改插件源碼
+    ↓
+node --test / npm run check（本 repo）
+    ↓
+restart-test.ps1（link 掛載直接載入新代碼）
+    ↓
+在測試 Desktop 執行運行時驗證
+    ↓
+verify-test.ps1 並留下最小證據
+    ↓
+Review / 人工驗收
+```
+
+不得自動把開發版插件發布或安裝到正式 DSH。
+

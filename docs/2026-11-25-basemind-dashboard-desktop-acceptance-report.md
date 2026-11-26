@@ -6,6 +6,11 @@
 步驟、證據與結論。它取代 `docs/2026-11-25-basemind-dashboard-execution-report.md` §4.2／§4.3 的
 「真實 UI 驗收 NOT RUN」，並把 §6 的 P5／P7 與 §10 的 UI／Performance／Compatibility 表更新為以下結論。
 
+> **2026-11-26 補充**：本報告標為 NOT RUN 的兩項已在官方測試環境（`D:\02_zengjunlin\DSH_TEST`）補完，
+> 見 `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md`：
+> P5 延遲取樣已量測（60 個樣本，未偵測到回歸），headless 組合已取得工具註冊實證（模型回合仍受限於
+> 憑證只對 Desktop 進程可用）。以下 §6.3、§9、§11 的 NOT RUN 標記以該報告為準。
+
 ## 0. 結論摘要
 
 | 項目 | 結果 |
@@ -16,8 +21,8 @@
 | 停用／重新啟用 bundle | **PASS**：控件與路由族消失、回復（§6） |
 | 20 次以上開關循環（P7） | **PASS**：22 次循環、DOM 節點數與 host 子程序數不變、閒置無輪詢（§7） |
 | M8 index-level wiring 測試 | **PASS**：新增 4 條測試，`test/index.test.mjs` 34/34 通過（§8） |
-| headless（無 Web server）組合 | **PARTIAL**：組合與啟動有證據；完整 headless 會話因缺少模型憑證 **NOT RUN**（§6.3） |
-| P5 30 次 Agent 延遲取樣 | **NOT RUN**，理由見 §9 |
+| headless（無 Web server）組合 | **PARTIAL**：組合與啟動有證據；完整 headless 會話因缺少模型憑證 **NOT RUN**（2026-11-26 已補：工具註冊實證，模型回合仍受憑證限制） |
+| P5 30 次以上 Agent 延遲取樣 | **2026-11-26 已量測**：60 個樣本（40 真實負載 + 20 飽和負載），未偵測到可重複回歸 — 見 `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md` §4 |
 | 文件回填 | 本報告 + execution report + CHANGELOG + README 路徑說明 |
 
 ## 1. 環境與方法
@@ -165,7 +170,7 @@ Statistics 的「統計範圍」在中文介面下有兩條說明是英文：
 | headless profile 也安裝同一 tarball | 完成（`dsh plugin --profile headless add …`） |
 | 組合是否含 Web app | **無**：`dsh --profile headless --dump-config` 有 `- id: dsh-basemind`，但沒有任何 `patched by @deepseek-ai/dsh-web-app`；`web` profile 則全部是 web-app patched → headless 組合沒有 `webServer` 服務 |
 | 啟動是否正常 | **PASS**：`dsh --profile headless --approval-policy never --json "…"` 走到 `turn_start`／`step_start`，外掛沒有拋錯或阻塞 |
-| 完整一輪（含工具清單） | **NOT RUN**：隔離的 DSH_HOME 內沒有 LLM 憑證，於 `step_end` 失敗 `MISSING_CREDENTIAL: llm-deepseek: no API key for provider route "deepseek-official"`。把使用者的真實 API key 放進這個環境不在授權內 |
+| 完整一輪（含工具清單） | **NOT RUN**：隔離的 DSH_HOME 內沒有 LLM 憑證，於 `step_end` 失敗 `MISSING_CREDENTIAL: llm-deepseek: no API key for provider route "deepseek-official"`。把使用者的真實 API key 放進這個環境不在授權內。（2026-11-26 在測試環境補到：工具清單 19 個 `mcp__basemind__*` 有實證；模型回合仍受同一憑證限制） |
 | 路由族是否未註冊 | **PASS（結構＋單元）**：`index.js:831-874` 以 `ctx.get('webServer')` 讀取，沒有就 silent return；`test/index.test.mjs` 新增「without a Web server …」用例 |
 
 ### 6.4 uninstall
@@ -210,7 +215,10 @@ dsh --profile web --dump-config | grep -c dsh-basemind  →  0
 驗證：`node --test test/index.test.mjs` → **34 pass / 0 fail**；`npm run check` → `syntax ok: 27 files`、
 `bundle manifest ok`。
 
-## 9. P5（30 次 Agent 延遲取樣）：NOT RUN
+## 9. P5（30 次 Agent 延遲取樣）：NOT RUN（2026-11-26 已補測）
+
+> 後續：已在官方測試環境以 60 個樣本完成量測，結論與數據見
+> `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md` §4。以下保留當時未執行的理由。
 
 - 需要 30 輪真實 Agent 會話的延遲取樣，成本最高；交接文件要求「需指定 provider／model 與預算」。
 - 本環境**沒有可用的 LLM 憑證**（見 §6.3 的 `MISSING_CREDENTIAL`），把使用者憑證帶進隔離環境不在授權內。
@@ -246,8 +254,8 @@ dsh --profile web --dump-config | grep -c dsh-basemind  →  0
 
 | 項目 | 狀態 / 原因 |
 | --- | --- |
-| P5 30 次 Agent 延遲取樣 | **NOT RUN**（§9：無憑證、需預算） |
-| headless 完整會話與工具清單 | **NOT RUN**（§6.3：`MISSING_CREDENTIAL`）；組合與降級由 dump-config 與單元測試覆蓋 |
+| P5 30 次 Agent 延遲取樣 | **2026-11-26 已補測**（60 樣本；見 2026-11-26 測試環境報告 §4） |
+| headless 完整會話與工具清單 | **2026-11-26 已補**：工具清單有實證（19 個 `mcp__basemind__*`），模型回合仍 **NOT RUN**（憑證只對 Desktop 進程可用） |
 | 實機「未知值 / notice / 0 檔語言」 | 實機工作區是已索引狀態，這三條以單元測試為證據（§4.1） |
 | UI `卸载` 按鈕 | 未按；以 CLI `plugin remove` 作等價證據：profile 依賴與 `dsh.profile.bundles` 均移除，`--dump-config` 的 `dsh-basemind` 筆數為 0（§6.4） |
 | 遠端 CI | 需要 push，不在授權內 |

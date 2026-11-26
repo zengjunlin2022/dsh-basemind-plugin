@@ -88,7 +88,7 @@ Unknown values render "not available" — never a zero, never a fabricated figur
 | `view: 'summary'` renders nothing; `view: 'page'` renders the shell | PASS |
 | The four views render real payloads (counts, shares, checks, history cap, scope labels, truncated notice) | PASS |
 | Real Web UI acceptance (packaged install, four tabs on live BaseMind data, theme switch, locale switch, disable/re-enable, 22 open/close cycles) | **PASS** on 2026-11-25 — `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md` |
-| Headless session (no Web server) | **PARTIAL** — composition and no-route degradation proven (dump-config + `test/index.test.mjs`); a full headless turn was NOT RUN (`MISSING_CREDENTIAL` in the isolated home) |
+| Headless session (no Web server) | **PARTIAL** — composition, no-route degradation and the 19 registered `mcp__basemind__*` tools are proven (dump-config, session `request/header`, `test/index.test.mjs`); a model turn is still **NOT RUN** because the test credential is only usable from the Desktop process (`MISSING_CREDENTIAL` from the CLI). Evidence: `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md` §5 |
 
 ### 4.3 The real Web UI acceptance run (2026-11-25)
 
@@ -149,7 +149,7 @@ the 22 MB grammar bundle. The real gate was executed once here (row 10) and pass
 | P2 Dashboard open and idle | Overview caches 5 s; no interval unless a submitted scan is active; no other workspace is queried | PASS |
 | P3 Tab switching | each tab has its own effect with an `AbortController`; Overview cache prevents repeat queries within 5 s | PASS |
 | P4 Fast workspace switching | aborted controller per view; results of a switched-away workspace are dropped by the abort check | PASS (unit-level) |
-| P5 Agent under load | reads are serialised Host-wide (one child, queue ≤ 4), identical requests coalesce; no Agent path modified | PASS by design; no latency benchmark was run (**NOT RUN**, 2026-11-25 Web UI acceptance: the isolated home has no LLM credential) |
+| P5 Agent under load | reads are serialised Host-wide (one child, queue ≤ 4), identical requests coalesce; no Agent path modified | **PASS, measured 2026-11-26** on the DSH_TEST Desktop Host: 60 interleaved samples (20/20 realistic load, 10/10 saturation) with one `code_symbols` call each; turn median 2160 → 2107 ms (paired median −114 ms) and under saturation 2191 → 2152 ms, tool median 21 → 21 ms — no repeatable regression (paired IQR ±350 ms is the noise floor). Evidence: `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md` §4 |
 | P6 During a scan | one scan per machine, progress not simulated, polling only while the tab is open, stops on completion | PASS, and measured live: `GET /scan` on tab open, `POST /scan` → 202, two chained `GET /scan` polls, then zero dashboard requests through 12 s of idle |
 | P7 Open/close cycles | every effect returns cleanup; no module-level timer or listener; route disposers owned by the plugin effect | **PASS** — 22 open/close cycles on the real UI: DOM node count constant at 1224, host processes unchanged (basemind 6 / node 12 / DSH 18), no dashboard request while idle afterwards |
 
@@ -185,7 +185,9 @@ fixtures, binaries and pack.json stay out; the seven Dashboard modules are now r
 - **Daemon/relay internals**: Diagnostics shows the relay count this plugin owns, not daemon process memory.
 - **Diagnostics and Statistics are not cached**: they are explicit actions, so each tab open runs its queries (0.4–1.4 s).
 - **Activation order**: route registration needs `webServer` at `apply` or at the Cordis `ready` event; if neither has it, the Dashboard is absent with a debug log and everything else works.
-- **Dashboard UI on a real Desktop**: NOT RUN here (see §4.3).
+- **Dashboard UI on a real Desktop**: verified on 2026-11-25 (isolated `dsh web`) and 2026-11-26 (the
+  official DSH_TEST Desktop, where the Desktop's own web server serves the route family) — see
+  `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md`.
 - **Localisation**: the page's own copy is bilingual; the rest of the Host UI keeps its own locale behaviour.
 
 ## 10. Final acceptance checklist (plan §50)
@@ -238,7 +240,7 @@ Only items with evidence are PASS; the rest are labelled.
 | No new Agent tools / skills / bootstrap change | **PASS** |
 | No resident daemon / UI relay | **PASS** |
 | Passive view does not index | **PASS** (status does not build an index; real gate asserts not-indexed before the scan) |
-| No obvious repeatable Agent regression | **NOT RUN** — no 30-sample latency benchmark (no LLM credential in the isolated home) |
+| No obvious repeatable Agent regression | **PASS (measured)** — 60 samples in the DSH_TEST Desktop Host: no repeatable turn or tool-latency increase under realistic or saturated Dashboard load (2026-11-26 report §4) |
 | No timer/listener/process leak | **PASS** — 22 open/close cycles on the real UI: DOM nodes constant, host processes unchanged, zero dashboard requests while idle afterwards |
 
 ### Compatibility
@@ -246,7 +248,7 @@ Only items with evidence are PASS; the rest are labelled.
 | Item | Verdict |
 | --- | --- |
 | Existing plugin regression | **PASS** (`npm test`, 506 pass / 20 skipped / 0 fail) |
-| Headless | **PARTIAL** — `--dump-config` shows the plugin row in a headless composition with no `@deepseek-ai/dsh-web-app` patch, the row booted to `turn_start`, and `test/index.test.mjs` covers the no-`webServer` path; a full headless turn was **NOT RUN** (`MISSING_CREDENTIAL`) |
+| Headless | **PARTIAL** — the headless composition has no `@deepseek-ai/dsh-web-app` and no `webServer`; the plugin still registered 19 `mcp__basemind__*` tools (session `request/header`); a model turn is blocked by the credential being Desktop-only (**NOT RUN**), and `test/index.test.mjs` covers the no-`webServer` path |
 | Safe degradation without UI API | **PASS** (unit test: registration without a web server is a no-op) |
 | Manifest / skills / pack checks | **PASS** (check, check:pack; check:skills not separately needed — no skill file changed) |
 | Full regression gate | **PASS** (`npm run verify`) |
@@ -280,8 +282,13 @@ Full evidence: [review fix report](./2026-11-25-basemind-dashboard-review-fix-re
 
 1. Review the diff and commit (no commit was created).
 2. ~~Run the Desktop UI acceptance steps in §4.3 on a throwaway profile.~~ Done on 2026-11-25 —
-   `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md`.
-3. Optionally record a 30-sample P5 latency benchmark, and a full headless turn on a machine that has an
-   LLM credential; the current report marks both NOT RUN.
+   `docs/2026-11-25-basemind-dashboard-desktop-acceptance-report.md`; re-verified in the official
+   DSH_TEST Desktop on 2026-11-26 — `docs/2026-11-26-basemind-dashboard-testenv-acceptance-report.md`.
+3. ~~Record a 30-sample P5 latency benchmark.~~ Done on 2026-11-26: 60 samples, no repeatable
+   regression (same test-environment report, §4). A full headless **model** turn remains NOT RUN
+   because the test credential is only usable from the Desktop process; to close it, point the
+   headless profile's route at a dedicated `apiKeyEnv` and set that variable at launch
+   (`DSH_TEST\docs\README.md` §7).
 4. Decide whether to translate the two Host-supplied English scope strings (`lib/dashboard/service.js:396-397`)
-   so the Chinese Statistics tab is fully localised (acceptance report §4.2).
+   so the Chinese Statistics tab is fully localised (acceptance report §4.2; the same text was observed
+   in the Desktop on 2026-11-26).
